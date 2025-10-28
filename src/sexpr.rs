@@ -4,7 +4,7 @@ use pest::iterators::Pair;
 #[grammar = "l2.pest"]
 pub struct L2Parser;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SExpr {
     Char(char),
     List(Vec<SExpr>),
