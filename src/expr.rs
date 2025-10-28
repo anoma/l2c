@@ -4,6 +4,66 @@ use crate::sexpr::{SExpr, Rule, L2Parser};
 pub const LITERAL_LEN: usize = 32;
 
 #[derive(Debug)]
+pub struct MetaExpr {
+    fragment: SExpr,
+}
+
+#[derive(Debug)]
+pub struct SymbolExpr {
+    pub reference: String,
+}
+
+#[derive(Debug)]
+pub struct LiteralExpr {
+    pub value: u32,
+}
+
+#[derive(Debug)]
+pub struct WithExpr {
+    pub reference: String,
+    pub expression: Box<Expr>,
+}
+
+#[derive(Debug)]
+pub struct FunctionExpr {
+    pub reference: String,
+    pub parameters: Vec<String>,
+    pub expression: Box<Expr>,
+}
+
+#[derive(Debug)]
+pub struct ContinuationExpr {
+    pub reference: String,
+    pub parameters: Vec<String>,
+    pub expression: Box<Expr>,
+}
+
+#[derive(Debug)]
+pub struct InvokeExpr {
+    pub reference: Box<Expr>,
+    pub arguments: Vec<Expr>,
+}
+
+#[derive(Debug)]
+pub struct JumpExpr {
+    pub reference: Box<Expr>,
+    pub arguments: Vec<Expr>,
+}
+
+#[derive(Debug)]
+pub struct StorageExpr {
+    pub reference: String,
+    pub arguments: Vec<Expr>,
+}
+
+#[derive(Debug)]
+pub struct IfExpr {
+    pub condition: Box<Expr>,
+    pub consequent: Box<Expr>,
+    pub alternate: Box<Expr>,
+}
+
+#[derive(Debug)]
 pub enum Expr {
     Function(FunctionExpr),
     Continuation(ContinuationExpr),
@@ -17,64 +77,57 @@ pub enum Expr {
     Storage(StorageExpr),
 }
 
-#[derive(Debug)]
-pub struct MetaExpr {
-    fragment: SExpr,
-}
-
-#[derive(Debug)]
-pub struct SymbolExpr {
-    reference: String,
-}
-
-#[derive(Debug)]
-pub struct LiteralExpr {
-    value: u32,
-}
-
-#[derive(Debug)]
-pub struct WithExpr {
-    reference: String,
-    expression: Box<Expr>,
-}
-
-#[derive(Debug)]
-pub struct FunctionExpr {
-    reference: String,
-    parameters: Vec<String>,
-    expression: Box<Expr>,
-}
-
-#[derive(Debug)]
-pub struct ContinuationExpr {
-    reference: String,
-    parameters: Vec<String>,
-    expression: Box<Expr>,
-}
-
-#[derive(Debug)]
-pub struct InvokeExpr {
-    reference: Box<Expr>,
-    arguments: Vec<Expr>,
-}
-
-#[derive(Debug)]
-pub struct JumpExpr {
-    reference: Box<Expr>,
-    arguments: Vec<Expr>,
-}
-
-#[derive(Debug)]
-pub struct StorageExpr {
-    reference: String,
-    arguments: Vec<Expr>,
-}
-
-#[derive(Debug)]
-pub struct IfExpr {
-    condition: Box<Expr>,
-    consequent: Box<Expr>,
-    alternate: Box<Expr>,
+impl std::fmt::Display for Expr {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            Self::Symbol(sym) => write!(f, "{}", sym.reference),
+            Self::Literal(value) => write!(f, "{}", value.value),
+            Self::With(with) => write!(f, "(with {} {})", with.reference, with.expression),
+            Self::Function(function) => {
+                write!(f, "(function {} (", function.reference)?;
+                if let [param0, rest @ ..] = &function.parameters[..] {
+                    write!(f, "{}", param0)?;
+                    for param in rest {
+                        write!(f, " {}", param)?;
+                    }
+                }
+                write!(f, ") {})", function.expression)
+            },
+            Self::Continuation(continuation) => {
+                write!(f, "(function {} (", continuation.reference)?;
+                if let [param0, rest @ ..] = &continuation.parameters[..] {
+                    write!(f, "{}", param0)?;
+                    for param in rest {
+                        write!(f, " {}", param)?;
+                    }
+                }
+                write!(f, ") {})", continuation.expression)
+            },
+            Self::Invoke(invoke) => {
+                write!(f, "[{}", invoke.reference)?;
+                for arg in &invoke.arguments {
+                    write!(f, " {}", arg)?;
+                }
+                write!(f, "]")
+            },
+            Self::Jump(invoke) => {
+                write!(f, "{{{}", invoke.reference)?;
+                for arg in &invoke.arguments {
+                    write!(f, " {}", arg)?;
+                }
+                write!(f, "}}")
+            },
+            Self::Storage(storage) => {
+                write!(f, "(storage {}", storage.reference)?;
+                for arg in &storage.arguments {
+                    write!(f, " {}", arg)?;
+                }
+                write!(f, ")")
+            },
+            Self::If(ife) => write!(f, "(if {} {} {})", ife.condition, ife.consequent, ife.alternate),
+            Self::Meta(meta) => write!(f, "{}", meta.fragment),
+        }
+    }
 }
 
 #[derive(Debug)]
