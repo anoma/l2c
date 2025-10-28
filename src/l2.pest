@@ -1,0 +1,19 @@
+WHITESPACE = _{ " " | "\t" | NEWLINE }
+
+COMMENT = _{ "//" ~ (!"\n" ~ ANY)* | "/*" ~ (!"*/" ~ ANY)* ~ "*/" }
+
+token = @{ (!(";" | ":" | "{" | "[" | "(" | ")" | "]" | "}" | WHITESPACE) ~ ANY)+ }
+
+slist = { "[" ~ fragment* ~ "]" }
+
+clist = { "{" ~ fragment* ~ "}" }
+
+list = { "(" ~ fragment* ~ ")" }
+
+fragment2 = { token | list | clist | slist }
+
+fragment1 = { fragment2 ~ ( ";" ~ fragment2 )* }
+
+fragment = { fragment1 ~ ( ":" ~ fragment1 )* }
+
+program = _{ SOI ~ fragment* ~ EOI }
