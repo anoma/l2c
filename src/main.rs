@@ -39,6 +39,7 @@ pub enum CStmt {
     If(CExpr, Vec<CStmt>, Vec<CStmt>),
     Return(CExpr),
     Function(String, Vec<String>, Vec<CStmt>),
+    Comment(String),
 }
 
 impl std::fmt::Display for CStmt {
@@ -76,6 +77,7 @@ impl std::fmt::Display for CStmt {
                 }
                 writeln!(f, "}}")
             },
+            Self::Comment(comment) => writeln!(f, "// {}", comment),
         }
     }
 }
@@ -103,6 +105,7 @@ impl State {
 }
 
 pub fn transpile_expr(expr: Expr, target: &CExpr, local: &mut Vec<CStmt>, global: &mut Vec<CStmt>, state: &mut State) {
+    let comment = CStmt::Comment(expr.to_string());
     match expr {
         Expr::Symbol(SymbolExpr { reference }) => {
             let assignment = CStmt::Assign(target.clone(), CExpr::Symbol(reference));
@@ -113,6 +116,7 @@ pub fn transpile_expr(expr: Expr, target: &CExpr, local: &mut Vec<CStmt>, global
             local.push(assignment);
         },
         Expr::With(WithExpr { reference, expression }) => {
+            local.push(comment);
             let mut withbody = vec![];
             let jmp_var = CExpr::Symbol(state.jmp_var(0).clone());
             let cret = CExpr::Symbol(state.gen_sym());
@@ -124,6 +128,7 @@ pub fn transpile_expr(expr: Expr, target: &CExpr, local: &mut Vec<CStmt>, global
             local.push(CStmt::Assign(target.clone(), jmp_var));
         },
         Expr::Function(FunctionExpr { reference, parameters, expression }) => {
+            global.push(comment);
             let mut funbody = vec![];
             let cret = CExpr::Symbol(state.gen_sym());
             transpile_expr(*expression, &cret, &mut funbody, global, state);
@@ -133,6 +138,7 @@ pub fn transpile_expr(expr: Expr, target: &CExpr, local: &mut Vec<CStmt>, global
             local.push(CStmt::Assign(target.clone(), CExpr::AddressOf(Box::new(CExpr::Symbol(reference)))));
         },
         Expr::Continuation(ContinuationExpr { reference, parameters, expression }) => {
+            local.push(comment);
             let mut contbody = vec![];
             let cret = CExpr::Symbol(state.gen_sym());
             for (i, param) in parameters.into_iter().enumerate() {
@@ -145,6 +151,7 @@ pub fn transpile_expr(expr: Expr, target: &CExpr, local: &mut Vec<CStmt>, global
             local.push(CStmt::Assign(target.clone(), CExpr::Symbol(reference)));
         },
         Expr::Invoke(InvokeExpr { reference, arguments }) => {
+            local.push(comment);
             let cref = CExpr::Symbol(state.gen_sym());
             transpile_expr(*reference, &cref, local, global, state);
             let mut cargs = vec![];
@@ -157,6 +164,7 @@ pub fn transpile_expr(expr: Expr, target: &CExpr, local: &mut Vec<CStmt>, global
             local.push(CStmt::Assign(target.clone(), call));
         },
         Expr::Jump(JumpExpr { reference, arguments }) => {
+            local.push(comment);
             let cref = CExpr::Symbol(state.gen_sym());
             transpile_expr(*reference, &cref, local, global, state);
             let mut cargs = vec![];
@@ -172,6 +180,7 @@ pub fn transpile_expr(expr: Expr, target: &CExpr, local: &mut Vec<CStmt>, global
             local.push(CStmt::Assign(target.clone(), call));
         },
         Expr::If(IfExpr { condition, consequent, alternate }) => {
+            local.push(comment);
             let ccond = CExpr::Symbol(state.gen_sym());
             transpile_expr(*condition, &ccond, local, global, state);
             let mut cconsequent = vec![];
@@ -182,6 +191,7 @@ pub fn transpile_expr(expr: Expr, target: &CExpr, local: &mut Vec<CStmt>, global
             local.push(ifstmt);
         },
         Expr::Storage(StorageExpr { reference, arguments }) => {
+            local.push(comment);
             let cref = CExpr::Symbol(reference);
             for (i, arg) in arguments.into_iter().enumerate() {
                 let i = i.try_into().expect("storage too large");
@@ -207,6 +217,6 @@ fn main() {
     println!();
     println!("Compiled Outputs:");
     for stmt in global {
-        println!("{}", stmt);
+        print!("{}", stmt);
     }
 }
