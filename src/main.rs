@@ -16,6 +16,7 @@ pub enum CExpr {
     Symbol(String),
     Literal(u32),
     Call(Box<CExpr>, Vec<CExpr>),
+    Binary(String, Box<CExpr>, Box<CExpr>),
     AddressOf(Box<CExpr>),
     Not(Box<CExpr>),
     Subscript(Box<CExpr>, Box<CExpr>),
@@ -43,6 +44,7 @@ impl std::fmt::Display for CExpr {
             Self::Not(expr) => write!(f, "!{}", expr),
             Self::Subscript(expr1, expr2) => write!(f, "{}[{}]", expr1, expr2),
             Self::Cast(typename, expr) => write!(f, "({} {}) {}", typename.0, typename.1, expr),
+            Self::Binary(op, expr1, expr2) => write!(f, "({} {} {})", expr1, op, expr2),
         }
     }
 }
@@ -189,6 +191,13 @@ impl State {
     }
 }
 
+pub fn is_symbol(expr: &Expr, set: &[&str]) -> bool {
+    let Expr::Symbol(sym) = expr else {
+        return false;
+    };
+    set.contains(&sym.reference.as_str())
+}
+
 pub fn transpile_expr(expr: Expr, target: (&CExpr, &CTypeName), local: &mut Vec<CStmt>, global: &mut Vec<CStmt>, state: &mut State) {
     let comment = CStmt::Comment(expr.to_string());
     match expr {
@@ -253,13 +262,30 @@ pub fn transpile_expr(expr: Expr, target: (&CExpr, &CTypeName), local: &mut Vec<
             let cret = CExpr::Symbol(cret_name.clone());
             contbody.push(CStmt::Declaration(cret_type.0.clone(), vec![(cret_type.1.clone().identifier(cret_name), None)]));
             for (i, param) in parameters.into_iter().enumerate() {
-                contbody.push(CStmt::Assign(CExpr::Symbol(param), CExpr::Symbol(state.jmp_var(i).to_string())));
+                contbody.push(CStmt::Declaration("uintptr_t".to_string(), vec![(CDeclarator::Identifier(param), Some(CExpr::Symbol(state.jmp_var(i).to_string())))]));
             }
             transpile_expr(*expression, (&cret, &cret_type), &mut contbody, global, state);
             let call = CExpr::Call(Box::new(CExpr::Symbol("setjmp".to_string())), vec![cbuf]);
             let cif = CStmt::If(call, contbody, vec![]);
             local.push(cif);
             local.push(CStmt::Assign(target.0.clone(), CExpr::Cast(target.1.clone(), Box::new(CExpr::Symbol(reference)))));
+        },
+        Expr::Invoke(InvokeExpr { reference, arguments }) if is_symbol(&reference, &["+", "-", "/", "*", "<<", ">>", "==", "!="]) && arguments.len() == 2 => {
+            local.push(comment);
+            let Expr::Symbol(sym) = *reference else {
+                panic!("invocation reference should be a symbol");
+            };
+            let mut cargs = vec![];
+            for arg in arguments {
+                let carg_name = state.gen_sym();
+                let carg_type = CTypeName::new("uintptr_t".to_string());
+                local.push(CStmt::Declaration(carg_type.0.to_string(), vec![(carg_type.1.clone().identifier(carg_name.clone()), None)]));
+                let carg = CExpr::Symbol(carg_name);
+                transpile_expr(arg, (&carg, &carg_type), local, global, state);
+                cargs.push(carg);
+            }
+            let call = CExpr::Binary(sym.reference, Box::new(cargs[0].clone()), Box::new(cargs[1].clone()));
+            local.push(CStmt::Assign(target.0.clone(), CExpr::Cast(target.1.clone(), Box::new(call))));
         },
         Expr::Invoke(InvokeExpr { reference, arguments }) => {
             local.push(comment);
@@ -341,8 +367,12 @@ fn main() {
     let mut state = State::default();
     let mut local = Vec::new();
     let mut global = Vec::new();
-    let program = expr::parse_program("(function hi (aa) (with hello (if a {hello [world 55]} [car])))").unwrap();
+    //let program = expr::parse_program("(function hi (aa) [+ (with hello (if a {hello [world 55]} [car])) 56])").unwrap();
     //let program = expr::parse_program("(function hi (aa) (storage hey 1 2 9))").unwrap();
+    let program = expr::parse_program("(function factorial (n) (if [== n 0] 1 [* n [factorial [- n 1]]]))").unwrap();
+    //let program = expr::parse_program(
+    //    "(function factorial (n) (with ret {(continuation loop (m acc) (if [== m 0] {ret acc} {loop [- m 1] [* m acc]})) n 1}))"
+    //).unwrap();
     println!("Source Program:");
     for expr in program {
         println!("{}", expr);
