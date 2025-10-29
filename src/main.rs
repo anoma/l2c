@@ -10,6 +10,7 @@ pub enum CExpr {
     AddressOf(Box<CExpr>),
     Not(Box<CExpr>),
     Subscript(Box<CExpr>, Box<CExpr>),
+    Indirection(Box<CExpr>),
 }
 
 impl std::fmt::Display for CExpr {
@@ -28,23 +29,69 @@ impl std::fmt::Display for CExpr {
                 write!(f, ")")
             },
             Self::AddressOf(expr) => write!(f, "&{}", expr),
+            Self::Indirection(expr) => write!(f, "*{}", expr),
             Self::Not(expr) => write!(f, "!{}", expr),
             Self::Subscript(expr1, expr2) => write!(f, "{}[{}]", expr1, expr2),
         }
     }
 }
 
+pub enum CDeclarator {
+    Identifier(String),
+    Pointer(Box<CDeclarator>),
+    Array(Box<CDeclarator>, CExpr),
+    Function(Box<CDeclarator>, Vec<(String, CDeclarator)>),
+}
+
+impl std::fmt::Display for CDeclarator {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            Self::Identifier(ident) => write!(f, "{}", ident),
+            Self::Pointer(decl) => write!(f, "*({})", decl),
+            Self::Array(decl, expr) => write!(f, "({})[{}]", decl, expr),
+            Self::Function(decl, params) => {
+                write!(f, "({})(", decl)?;
+                if let [(spec0, decl0), rest @ ..] = &params[..] {
+                    write!(f, "{} {}", spec0, decl0)?;
+                    for (spec, decl) in rest {
+                        write!(f, ", {} {}", spec, decl)?;
+                    }
+                }
+                write!(f, ")")
+            },
+        }
+    }
+}
+
 pub enum CStmt {
+    Declaration(String, Vec<(CDeclarator, Option<CExpr>)>),
     Assign(CExpr, CExpr),
     If(CExpr, Vec<CStmt>, Vec<CStmt>),
     Return(CExpr),
     Function(String, Vec<String>, Vec<CStmt>),
     Comment(String),
+    Expr(CExpr),
 }
 
 impl std::fmt::Display for CStmt {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
+            Self::Declaration(spec, decls) => {
+                write!(f, "{}", spec)?;
+                if let [(decl0, init0), rest @ ..] = &decls[..] {
+                    write!(f, " {}", decl0)?;
+                    if let Some(init0) = init0 {
+                        write!(f, " = {}", init0)?;
+                    }
+                    for (decl, init) in rest {
+                        write!(f, ", {}", decl)?;
+                        if let Some(init) = init {
+                            write!(f, " = {}", init)?;
+                        }
+                    }
+                }
+                writeln!(f, ";")
+            },
             Self::Assign(dst, src) => writeln!(f, "{} = {};", dst, src),
             Self::If(cond, cons, alt) => {
                 writeln!(f, "if({}) {{", cond)?;
@@ -78,6 +125,7 @@ impl std::fmt::Display for CStmt {
                 writeln!(f, "}}")
             },
             Self::Comment(comment) => writeln!(f, "// {}", comment),
+            Self::Expr(expr) => writeln!(f, "{};", expr),
         }
     }
 }
@@ -117,12 +165,17 @@ pub fn transpile_expr(expr: Expr, target: &CExpr, local: &mut Vec<CStmt>, global
         },
         Expr::With(WithExpr { reference, expression }) => {
             local.push(comment);
+            let cbuf_name = state.gen_sym();
+            let cbuf = CExpr::Symbol(cbuf_name.clone());
+            local.push(CStmt::Declaration("jmp_buf".to_string(), vec![(CDeclarator::Identifier(cbuf_name), None), (CDeclarator::Pointer(Box::new(CDeclarator::Identifier(reference.clone()))), Some(CExpr::AddressOf(Box::new(cbuf.clone()))))]));
             let mut withbody = vec![];
             let jmp_var = CExpr::Symbol(state.jmp_var(0).clone());
-            let cret = CExpr::Symbol(state.gen_sym());
+            let cret_name = state.gen_sym();
+            withbody.push(CStmt::Declaration("uintptr_t".to_string(), vec![(CDeclarator::Identifier(cret_name.clone()), None)]));
+            let cret = CExpr::Symbol(cret_name);
             transpile_expr(*expression, &cret, &mut withbody, global, state);
             withbody.push(CStmt::Assign(jmp_var.clone(), cret));
-            let call = CExpr::Call(Box::new(CExpr::Symbol("setjmp".to_string())), vec![CExpr::Symbol(reference)]);
+            let call = CExpr::Call(Box::new(CExpr::Symbol("setjmp".to_string())), vec![cbuf]);
             let cif = CStmt::If(CExpr::Not(Box::new(call)), withbody, vec![]);
             local.push(cif);
             local.push(CStmt::Assign(target.clone(), jmp_var));
@@ -130,7 +183,9 @@ pub fn transpile_expr(expr: Expr, target: &CExpr, local: &mut Vec<CStmt>, global
         Expr::Function(FunctionExpr { reference, parameters, expression }) => {
             global.push(comment);
             let mut funbody = vec![];
-            let cret = CExpr::Symbol(state.gen_sym());
+            let cret_name = state.gen_sym();
+            let cret = CExpr::Symbol(cret_name.clone());
+            funbody.push(CStmt::Declaration("uintptr_t".to_string(), vec![(CDeclarator::Identifier(cret_name), None)]));
             transpile_expr(*expression, &cret, &mut funbody, global, state);
             funbody.push(CStmt::Return(cret));
             let function = CStmt::Function(reference.clone(), parameters, funbody);
@@ -139,24 +194,35 @@ pub fn transpile_expr(expr: Expr, target: &CExpr, local: &mut Vec<CStmt>, global
         },
         Expr::Continuation(ContinuationExpr { reference, parameters, expression }) => {
             local.push(comment);
+            let cbuf_name = state.gen_sym();
+            let cbuf = CExpr::Symbol(cbuf_name.clone());
+            local.push(CStmt::Declaration("jmp_buf".to_string(), vec![(CDeclarator::Identifier(cbuf_name), None), (CDeclarator::Pointer(Box::new(CDeclarator::Identifier(reference.clone()))), Some(CExpr::AddressOf(Box::new(cbuf.clone()))))]));
             let mut contbody = vec![];
             let cret = CExpr::Symbol(state.gen_sym());
             for (i, param) in parameters.into_iter().enumerate() {
                 contbody.push(CStmt::Assign(CExpr::Symbol(param), CExpr::Symbol(state.jmp_var(i).to_string())));
             }
             transpile_expr(*expression, &cret, &mut contbody, global, state);
-            let call = CExpr::Call(Box::new(CExpr::Symbol("setjmp".to_string())), vec![CExpr::Symbol(reference.clone())]);
+            let call = CExpr::Call(Box::new(CExpr::Symbol("setjmp".to_string())), vec![cbuf]);
             let cif = CStmt::If(call, contbody, vec![]);
             local.push(cif);
             local.push(CStmt::Assign(target.clone(), CExpr::Symbol(reference)));
         },
         Expr::Invoke(InvokeExpr { reference, arguments }) => {
             local.push(comment);
-            let cref = CExpr::Symbol(state.gen_sym());
+            let cref_name = state.gen_sym();
+            let cref = CExpr::Symbol(cref_name.clone());
+            let mut params = vec![];
+            for _ in &arguments {
+                params.push(("uintptr_t".to_string(), CDeclarator::Identifier("".to_string())));
+            }
+            local.push(CStmt::Declaration("uintptr_t".to_string(), vec![(CDeclarator::Function(Box::new(CDeclarator::Pointer(Box::new(CDeclarator::Identifier(cref_name)))), params), None)]));
             transpile_expr(*reference, &cref, local, global, state);
             let mut cargs = vec![];
             for arg in arguments {
-                let carg = CExpr::Symbol(state.gen_sym());
+                let carg_name = state.gen_sym();
+                local.push(CStmt::Declaration("uintptr_t".to_string(), vec![(CDeclarator::Identifier(carg_name.clone()), None)]));
+                let carg = CExpr::Symbol(carg_name);
                 transpile_expr(arg, &carg, local, global, state);
                 cargs.push(carg);
             }
@@ -165,23 +231,29 @@ pub fn transpile_expr(expr: Expr, target: &CExpr, local: &mut Vec<CStmt>, global
         },
         Expr::Jump(JumpExpr { reference, arguments }) => {
             local.push(comment);
-            let cref = CExpr::Symbol(state.gen_sym());
+            let cref_name = state.gen_sym();
+            let cref = CExpr::Symbol(cref_name.clone());
+            local.push(CStmt::Declaration("jmp_buf".to_string(), vec![(CDeclarator::Pointer(Box::new(CDeclarator::Identifier(cref_name))), None)]));
             transpile_expr(*reference, &cref, local, global, state);
             let mut cargs = vec![];
             for arg in arguments {
-                let carg = CExpr::Symbol(state.gen_sym());
+                let carg_name = state.gen_sym();
+                local.push(CStmt::Declaration("uintptr_t".to_string(), vec![(CDeclarator::Identifier(carg_name.clone()), None)]));
+                let carg = CExpr::Symbol(carg_name);
                 transpile_expr(arg, &carg, local, global, state);
                 cargs.push(carg);
             }
             for (i, carg) in cargs.into_iter().enumerate() {
                 local.push(CStmt::Assign(CExpr::Symbol(state.jmp_var(i).clone()), carg));
             }
-            let call = CExpr::Call(Box::new(CExpr::Symbol("longjmp".to_string())), vec![cref, CExpr::Literal(1)]);
-            local.push(CStmt::Assign(target.clone(), call));
+            let call = CExpr::Call(Box::new(CExpr::Symbol("longjmp".to_string())), vec![CExpr::Indirection(Box::new(cref)), CExpr::Literal(1)]);
+            local.push(CStmt::Expr(call));
         },
         Expr::If(IfExpr { condition, consequent, alternate }) => {
             local.push(comment);
-            let ccond = CExpr::Symbol(state.gen_sym());
+            let ccond_name = state.gen_sym();
+            let ccond = CExpr::Symbol(ccond_name.clone());
+            local.push(CStmt::Declaration("uintptr_t".to_string(), vec![(CDeclarator::Identifier(ccond_name), None)]));
             transpile_expr(*condition, &ccond, local, global, state);
             let mut cconsequent = vec![];
             transpile_expr(*consequent, &target, &mut cconsequent, global, state);
@@ -208,7 +280,7 @@ fn main() {
     let mut state = State::default();
     let mut local = Vec::new();
     let mut global = Vec::new();
-    let program = expr::parse_program("(function hi (aa) (if a {hello [world]} [car]))").unwrap();
+    let program = expr::parse_program("(function hi (aa) (with hello (if a {hello [world 55]} [car])))").unwrap();
     println!("Source Program:");
     for expr in program {
         println!("{}", expr);
@@ -216,6 +288,11 @@ fn main() {
     }
     println!();
     println!("Compiled Outputs:");
+    let mut decls = vec![];
+    for jmp_var in state.jmp_vars {
+        decls.push((CDeclarator::Identifier(jmp_var.to_string()), None));
+    }
+    global.insert(0, CStmt::Declaration("uintptr_t".to_string(), decls));
     for stmt in global {
         print!("{}", stmt);
     }
