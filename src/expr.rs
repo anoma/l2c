@@ -3,67 +3,68 @@ use crate::sexpr::{SExpr, Rule, L2Parser};
 
 pub const LITERAL_LEN: usize = 32;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct MetaExpr {
-    fragment: SExpr,
+    pub fragment: SExpr,
+    pub reference: Box<Expr>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SymbolExpr {
     pub reference: String,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct LiteralExpr {
     pub value: u32,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct WithExpr {
     pub reference: String,
     pub expression: Box<Expr>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FunctionExpr {
     pub reference: String,
     pub parameters: Vec<String>,
     pub expression: Box<Expr>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ContinuationExpr {
     pub reference: String,
     pub parameters: Vec<String>,
     pub expression: Box<Expr>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct InvokeExpr {
     pub reference: Box<Expr>,
     pub arguments: Vec<Expr>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct JumpExpr {
     pub reference: Box<Expr>,
     pub arguments: Vec<Expr>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct StorageExpr {
     pub reference: String,
     pub arguments: Vec<Expr>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct IfExpr {
     pub condition: Box<Expr>,
     pub consequent: Box<Expr>,
     pub alternate: Box<Expr>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Expr {
     Function(FunctionExpr),
     Continuation(ContinuationExpr),
@@ -94,7 +95,7 @@ impl std::fmt::Display for Expr {
                 write!(f, ") {})", function.expression)
             },
             Self::Continuation(continuation) => {
-                write!(f, "(function {} (", continuation.reference)?;
+                write!(f, "(continuation {} (", continuation.reference)?;
                 if let [param0, rest @ ..] = &continuation.parameters[..] {
                     write!(f, "{}", param0)?;
                     for param in rest {
@@ -239,7 +240,12 @@ pub fn parse_expr(sexpr: SExpr) -> Result<Expr, ParserError> {
                 alternate: Box::new(parse_expr(alternate.clone())?),
             })
         },
-        _ => Expr::Meta(MetaExpr { fragment: SExpr::List(sexpr) }),
+        [keyword, ..] => {
+            Expr::Meta(MetaExpr {
+                reference: Box::new(parse_expr(keyword.clone())?),
+                fragment: SExpr::List(sexpr),
+            })
+        },
     })
 }
 
