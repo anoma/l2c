@@ -6,13 +6,10 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 fn main() {
-    //let program = expr::parse_program("(function hi (aa) [+ (with hello (if a {hello [world 55]} [car])) 56])").unwrap();
-    //let program = expr::parse_program("(function hi (aa) (storage hey 1 2 9))").unwrap();
-    //let program = expr::parse_program("[(function factorial (n) (if [== n (literal 00000000000000000000000000000000)] (literal 00000000000000000000000000000001) [* n [factorial [- n (literal 00000000000000000000000000000001)]]])) (literal 00000000000000000000000000000101)]").unwrap();
-    let mut program = expr::parse_program("((function _ (x) [car [cdr x]]) [(function factorial (n) (if [== n (literal 00000000000000000000000000000000)] (literal 00000000000000000000000000000001) [* n [factorial [- n (literal 00000000000000000000000000000001)]]])) (literal 00000000000000000000000000000101)])").unwrap();
-    /*let program = expr::parse_program(
-        "[(function factorial (n) (with ret {(continuation loop (m acc) (if [== m (literal 00000000000000000000000000000000)] {ret acc} {loop [- m (literal 00000000000000000000000000000001)] [* m acc]})) n (literal 00000000000000000000000000000001)})) (literal 00000000000000000000000000000011)]"
-    ).unwrap();*/
+    let args: Vec<String> = std::env::args().collect();
+    let source = std::fs::read_to_string(&args[1])
+        .expect("unable to read source");
+    let mut program = expr::parse_program(&source).unwrap();
     println!("Source Program:");
     for expr in &program {
         println!("{}", expr);
@@ -20,9 +17,12 @@ fn main() {
     println!();
     println!("Expanded Program:");
     for expr in &mut program {
-        let result = expand::eval(expand::expand(expr), 0, &HashMap::new(), Rc::new(expand::identity)).unwrap();
-        println!("{}", expr);
-        println!("Result: {}", result);
+        println!("{}", expand::expand(expr));
+    }
+    println!();
+    println!("Evaluated Program:");
+    for (idx, expr) in program.iter_mut().enumerate() {
+        println!("Evaluation {}: {}", idx, expand::eval(expr, 0, &HashMap::new(), Rc::new(expand::identity)).unwrap());
     }
     println!();
     println!("Compiled Outputs:");
