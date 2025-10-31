@@ -1,7 +1,8 @@
 mod sexpr;
 mod expr;
 mod transpile;
-use crate::expr::{Expr, LiteralExpr, JumpExpr, InvokeExpr, StorageExpr, ContinuationExpr, parse_expr};
+use crate::expr::{Expr, LiteralExpr, JumpExpr, InvokeExpr, StorageExpr, ContinuationExpr, MetaExpr, parse_expr};
+use crate::sexpr::SExpr;
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -53,6 +54,10 @@ fn eval_invoke(invoke: &InvokeExpr, counter: u32, env: &HashMap<String, Expr>, a
                     Ok(Expr::Literal(LiteralExpr { value: u32::from(a.value << b.value) })),
                 (Expr::Symbol(sym), [Expr::Literal(a), Expr::Literal(b)]) if sym.reference == ">>" =>
                     Ok(Expr::Literal(LiteralExpr { value: u32::from(a.value >> b.value) })),
+                (Expr::Symbol(sym), [Expr::Meta(MetaExpr { fragment: SExpr::List(list), reference })]) if sym.reference == "cdr" =>
+                    Ok(Expr::Meta(MetaExpr { fragment: SExpr::List(list[1..].to_vec()), reference: reference.clone() })),
+                (Expr::Symbol(sym), [Expr::Meta(MetaExpr { fragment: SExpr::List(list), reference })]) if sym.reference == "car" =>
+                    Ok(Expr::Meta(MetaExpr { fragment: list[0].clone(), reference: reference.clone() })),
                 (Expr::Function(function), _) => {
                     let mut env = HashMap::new();
                     env.insert(function.reference.clone(), reference.clone());
@@ -61,7 +66,7 @@ fn eval_invoke(invoke: &InvokeExpr, counter: u32, env: &HashMap<String, Expr>, a
                     }
                     eval(&function.expression, counter, &env, Rc::new(identity))
                 },
-                _ => panic!("unknown function"),
+                _ => panic!("unknown function: {}", reference),
             }
         }))
     }
@@ -167,35 +172,84 @@ fn eval(expr: &Expr, counter: u32, env: &HashMap<String, Expr>, cont: Continuati
             env.insert(storage.reference.clone(), expr.clone());
             eval_storage(storage, counter, &env, cont, vec![])
         },
+        Expr::Meta(_) => {
+            eval(expand(&mut expr.clone()), counter, env, cont)
+        }
+    }
+}
+
+fn expand(expr: &mut Expr) -> &mut Expr {
+    match expr {
+        Expr::Literal(_) | Expr::Function(_) | Expr::Symbol(_) => {},
+        Expr::If(ife) => {
+            expand(&mut ife.condition);
+            expand(&mut ife.consequent);
+            expand(&mut ife.alternate);
+        },
+        Expr::With(with) => {
+            expand(&mut with.expression);
+        },
+        Expr::Jump(jump) => {
+            expand(&mut jump.reference);
+            for arg in &mut jump.arguments {
+                expand(arg);
+            }
+        },
+        Expr::Continuation(continuation) => {
+            expand(&mut continuation.expression);
+        },
+        Expr::Invoke(invoke) => {
+            expand(&mut invoke.reference);
+            for arg in &mut invoke.arguments {
+                expand(arg);
+            }
+        },
+        Expr::Storage(storage) => {
+            for arg in &mut storage.arguments {
+                expand(arg);
+            }
+        },
         Expr::Meta(meta) => {
+            let counter = 0;
             let reference = eval(&meta.reference, counter, &HashMap::new(), Rc::new(identity)).expect("jump must not escape macro expression");
-            let expansion_expr = Expr::Invoke(InvokeExpr { reference: Box::new(reference), arguments: vec![expr.clone()] });
-            let expansion = eval(&expansion_expr, counter, &HashMap::new(), Rc::new(identity)).expect("jump must not escape macro");
+            let arguments = vec![expr.clone()];
+            let expansion_expr = InvokeExpr { reference: Box::new(reference), arguments: arguments.clone() };
+            // Skip evaluating the argument otherwise there will be recursive macro expansion
+            let expansion = eval_invoke(&expansion_expr, counter, &HashMap::new(), arguments).expect("jump must not escape macro");
             let Expr::Meta(meta) = expansion else {
                 panic!("macro did not return a valid s-expression");
             };
-            let expansion = parse_expr(meta.fragment).expect("unable to parse expanded macro");
-            eval(&expansion, counter, env, cont)
-        }
+            *expr = parse_expr(meta.fragment).expect("unable to parse expanded macro");
+            expand(expr);
+        },
     }
+    expr
 }
 
 fn main() {
     //let program = expr::parse_program("(function hi (aa) [+ (with hello (if a {hello [world 55]} [car])) 56])").unwrap();
     //let program = expr::parse_program("(function hi (aa) (storage hey 1 2 9))").unwrap();
-    let program = expr::parse_program("[(function factorial (n) (if [== n (literal 00000000000000000000000000000000)] (literal 00000000000000000000000000000001) [* n [factorial [- n (literal 00000000000000000000000000000001)]]])) (literal 00000000000000000000000000000101)]").unwrap();
+    //let program = expr::parse_program("[(function factorial (n) (if [== n (literal 00000000000000000000000000000000)] (literal 00000000000000000000000000000001) [* n [factorial [- n (literal 00000000000000000000000000000001)]]])) (literal 00000000000000000000000000000101)]").unwrap();
+    let mut program = expr::parse_program("((function _ (x) [car [cdr x]]) [(function factorial (n) (if [== n (literal 00000000000000000000000000000000)] (literal 00000000000000000000000000000001) [* n [factorial [- n (literal 00000000000000000000000000000001)]]])) (literal 00000000000000000000000000000101)])").unwrap();
     /*let program = expr::parse_program(
         "[(function factorial (n) (with ret {(continuation loop (m acc) (if [== m (literal 00000000000000000000000000000000)] {ret acc} {loop [- m (literal 00000000000000000000000000000001)] [* m acc]})) n (literal 00000000000000000000000000000001)})) (literal 00000000000000000000000000000011)]"
     ).unwrap();*/
-    let mut transpiler = transpile::Transpiler::default();
     println!("Source Program:");
-    for expr in program {
+    for expr in &program {
         println!("{}", expr);
-        let result = eval(&expr, 0, &HashMap::new(), Rc::new(identity)).unwrap();
-        transpiler.transpile(expr, (&transpile::CExpr::Literal(0), &transpile::CTypeName::new("void".to_string())), &mut Vec::new());
+    }
+    println!();
+    println!("Expanded Program:");
+    for expr in &mut program {
+        let result = eval(expand(expr), 0, &HashMap::new(), Rc::new(identity)).unwrap();
+        println!("{}", expr);
         println!("Result: {}", result);
     }
     println!();
     println!("Compiled Outputs:");
+    let mut transpiler = transpile::Transpiler::default();
+    for expr in program {
+        transpiler.transpile(expr, (&transpile::CExpr::Literal(0), &transpile::CTypeName::new("void".to_string())), &mut Vec::new());
+    }
     println!("{}", transpiler);
 }
