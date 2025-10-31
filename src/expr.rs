@@ -6,7 +6,7 @@ pub const LITERAL_LEN: usize = 32;
 #[derive(Debug, Clone)]
 pub struct MetaExpr {
     pub fragment: SExpr,
-    pub reference: Box<Expr>,
+    pub reference: Option<Box<Expr>>,
 }
 
 #[derive(Debug, Clone)]
@@ -242,7 +242,7 @@ pub fn parse_expr(sexpr: SExpr) -> Result<Expr, ParserError> {
         },
         [keyword, ..] => {
             Expr::Meta(MetaExpr {
-                reference: Box::new(parse_expr(keyword.clone())?),
+                reference: Some(Box::new(parse_expr(keyword.clone())?)),
                 fragment: SExpr::List(sexpr),
             })
         },

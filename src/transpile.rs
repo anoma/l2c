@@ -269,7 +269,7 @@ impl Transpiler {
                 block.push(cif);
                 block.push(CStmt::Assign(target.0.clone(), CExpr::Cast(target.1.clone(), Box::new(CExpr::Symbol(reference)))));
             },
-            Expr::Invoke(InvokeExpr { reference, arguments }) if Self::is_symbol(&reference, &["+", "-", "/", "*", "<<", ">>", "==", "!=", "<", ">", "<=", ">="]) && arguments.len() == 2 => {
+            Expr::Invoke(InvokeExpr { reference, arguments }) if Self::is_symbol(&reference, &["+", "-", "/", "*", "<<", ">>", "==", "!=", "<", ">", "<=", ">=", "&", "|", "%"]) && arguments.len() == 2 => {
                 block.push(comment);
                 let Expr::Symbol(sym) = *reference else {
                     panic!("invocation reference should be a symbol");

@@ -16,13 +16,23 @@ fn main() {
     }
     println!();
     println!("Expanded Program:");
+    let mut global_env = HashMap::new();
+    expand::init_sexprs(&mut global_env);
     for expr in &mut program {
-        println!("{}", expand::expand(expr));
+        if let expr::Expr::Function(function) = expr {
+            global_env.insert(function.reference.clone(), expr.clone());
+        }
+    }
+    for expr in &mut program {
+        println!("{}", expand::expand(expr, &global_env));
+        if let expr::Expr::Function(function) = expr {
+            global_env.insert(function.reference.clone(), expr.clone());
+        }
     }
     println!();
     println!("Evaluated Program:");
     for (idx, expr) in program.iter_mut().enumerate() {
-        println!("Evaluation {}: {}", idx, expand::eval(expr, 0, &HashMap::new(), Rc::new(expand::identity)).unwrap());
+        println!("Evaluation {}: {}", idx, expand::eval(expr, 0, &HashMap::new(), &global_env, Rc::new(expand::identity)).unwrap());
     }
     println!();
     println!("Compiled Outputs:");
