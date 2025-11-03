@@ -23,6 +23,7 @@ pub struct LiteralExpr {
 pub struct WithExpr {
     pub reference: String,
     pub expression: Box<Expr>,
+    pub escapes: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -37,6 +38,7 @@ pub struct ContinuationExpr {
     pub reference: String,
     pub parameters: Vec<String>,
     pub expression: Box<Expr>,
+    pub escapes: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -193,6 +195,7 @@ pub fn parse_expr(sexpr: SExpr) -> Result<Expr, ParserError> {
             Expr::With(WithExpr {
                 reference: parse_string(reference.clone())?,
                 expression: Box::new(parse_expr(expr.clone())?),
+                escapes: false,
             })
         },
         [keyword, reference, parameters, expr] if is_keyword(keyword, "function") => {
@@ -213,6 +216,7 @@ pub fn parse_expr(sexpr: SExpr) -> Result<Expr, ParserError> {
                 reference: parse_string(reference.clone())?,
                 parameters: parameters.iter().map(|x| parse_string(x.clone())).collect::<Result<_, _>>()?,
                 expression: Box::new(parse_expr(expr.clone())?),
+                escapes: false,
             })
         },
         [keyword, reference, arguments @ ..] if is_keyword(keyword, "invoke") => {

@@ -1,4 +1,5 @@
 use crate::expr::{Expr, InvokeExpr, LiteralExpr, SymbolExpr, IfExpr, FunctionExpr, JumpExpr, WithExpr, ContinuationExpr, StorageExpr};
+use std::collections::HashSet;
 
 #[derive(Clone)]
 pub struct CTypeName(String, Box<CDeclarator>);
@@ -115,6 +116,8 @@ pub enum CStmt {
     Function(String, CFunctionDeclarator, Vec<CStmt>),
     Comment(String),
     Expr(CExpr),
+    Label(String),
+    Goto(String),
 }
 
 impl std::fmt::Display for CStmt {
@@ -163,6 +166,8 @@ impl std::fmt::Display for CStmt {
             },
             Self::Comment(comment) => writeln!(f, "// {}", comment),
             Self::Expr(expr) => writeln!(f, "{};", expr),
+            Self::Label(identifier) => writeln!(f, "{}:", identifier),
+            Self::Goto(identifier) => writeln!(f, "goto {};", identifier),
         }
     }
 }
@@ -197,7 +202,7 @@ impl Transpiler {
         set.contains(&sym.reference.as_str())
     }
 
-    pub fn transpile(&mut self, expr: Expr, target: (&CExpr, &CTypeName), block: &mut Vec<CStmt>) {
+    pub fn transpile(&mut self, expr: Expr, target: (&CExpr, &CTypeName), block: &mut Vec<CStmt>, labels: &HashSet<String>) {
         let comment = CStmt::Comment(expr.to_string());
         match expr {
             Expr::Symbol(SymbolExpr { reference }) => {
@@ -208,7 +213,23 @@ impl Transpiler {
                 let assignment = CStmt::Assign(target.0.clone(), CExpr::Cast(target.1.clone(), Box::new(CExpr::Literal(value))));
                 block.push(assignment);
             },
-            Expr::With(WithExpr { reference, expression }) => {
+            Expr::With(WithExpr { reference, expression, escapes: false }) => {
+                let mut labels = labels.clone();
+                labels.insert(reference.clone());
+                block.push(comment);
+                let jmp_var = CExpr::Symbol(self.jmp_var(0).clone());
+                let cret_name = self.gen_sym();
+                let cret_type = CTypeName::new("uintptr_t".to_string());
+                block.push(CStmt::Declaration(cret_type.0.clone(), vec![(cret_type.1.clone().identifier(cret_name.clone()), None)]));
+                let cret = CExpr::Symbol(cret_name);
+                self.transpile(*expression, (&cret, &cret_type), block, &labels);
+                block.push(CStmt::Assign(jmp_var.clone(), cret));
+                block.push(CStmt::Label(reference.clone()));
+                block.push(CStmt::Assign(target.0.clone(), CExpr::Cast(target.1.clone(), Box::new(jmp_var))));
+            },
+            Expr::With(WithExpr { reference, expression, .. }) => {
+                let mut labels = labels.clone();
+                labels.remove(&reference);
                 block.push(comment);
                 let cbuf_name = self.gen_sym();
                 let cbuf = CExpr::Symbol(cbuf_name.clone());
@@ -221,7 +242,7 @@ impl Transpiler {
                 let cret_type = CTypeName::new("uintptr_t".to_string());
                 withbody.push(CStmt::Declaration(cret_type.0.clone(), vec![(cret_type.1.clone().identifier(cret_name.clone()), None)]));
                 let cret = CExpr::Symbol(cret_name);
-                self.transpile(*expression, (&cret, &cret_type), &mut withbody);
+                self.transpile(*expression, (&cret, &cret_type), &mut withbody, &labels);
                 withbody.push(CStmt::Assign(jmp_var.clone(), cret));
                 let call = CExpr::Call(Box::new(CExpr::Symbol("setjmp".to_string())), vec![cbuf]);
                 let cif = CStmt::If(CExpr::Not(Box::new(call)), withbody, vec![]);
@@ -229,8 +250,11 @@ impl Transpiler {
                 block.push(CStmt::Assign(target.0.clone(), CExpr::Cast(target.1.clone(), Box::new(jmp_var))));
             },
             Expr::Function(FunctionExpr { reference, parameters, expression }) => {
+                let mut labels = labels.clone();
+                labels.remove(&reference);
                 let mut cparams = vec![];
                 for param in &parameters {
+                    labels.remove(param);
                     cparams.push(("uintptr_t".to_string(), CDeclarator::Identifier(param.clone())));
                 }
                 let cfunc_decl = CFunctionDeclarator(Box::new(CDeclarator::Identifier(reference.clone())), cparams);
@@ -242,13 +266,29 @@ impl Transpiler {
                 let cret_type = CTypeName::new("uintptr_t".to_string());
                 let cret = CExpr::Symbol(cret_name.clone());
                 funbody.push(CStmt::Declaration(cret_type.0.clone(), vec![(cret_type.1.clone().identifier(cret_name), None)]));
-                self.transpile(*expression, (&cret, &cret_type), &mut funbody);
+                self.transpile(*expression, (&cret, &cret_type), &mut funbody, &labels);
                 funbody.push(CStmt::Return(cret));
                 let function = CStmt::Function(cfunc_type.0.clone(), cfunc_decl, funbody);
                 self.cprogam.push(function);
                 block.push(CStmt::Assign(target.0.clone(), CExpr::Cast(target.1.clone(), Box::new(CExpr::AddressOf(Box::new(CExpr::Symbol(reference)))))));
             },
-            Expr::Continuation(ContinuationExpr { reference, parameters, expression }) => {
+            Expr::Continuation(ContinuationExpr { reference, parameters, expression, escapes: false }) => {
+                let mut labels = labels.clone();
+                labels.insert(reference.clone());
+                block.push(comment);
+                block.push(CStmt::Label(reference.clone()));
+                let cret_name = self.gen_sym();
+                let cret_type = CTypeName::new("uintptr_t".to_string());
+                let cret = CExpr::Symbol(cret_name.clone());
+                block.push(CStmt::Declaration(cret_type.0.clone(), vec![(cret_type.1.clone().identifier(cret_name), None)]));
+                for (i, param) in parameters.into_iter().enumerate() {
+                    block.push(CStmt::Declaration("uintptr_t".to_string(), vec![(CDeclarator::Identifier(param), Some(CExpr::Symbol(self.jmp_var(i).to_string())))]));
+                }
+                self.transpile(*expression, (&cret, &cret_type), block, &labels);
+            },
+            Expr::Continuation(ContinuationExpr { reference, parameters, expression, .. }) => {
+                let mut labels = labels.clone();
+                labels.remove(&reference);
                 block.push(comment);
                 let cbuf_name = self.gen_sym();
                 let cbuf = CExpr::Symbol(cbuf_name.clone());
@@ -263,7 +303,7 @@ impl Transpiler {
                 for (i, param) in parameters.into_iter().enumerate() {
                     contbody.push(CStmt::Declaration("uintptr_t".to_string(), vec![(CDeclarator::Identifier(param), Some(CExpr::Symbol(self.jmp_var(i).to_string())))]));
                 }
-                self.transpile(*expression, (&cret, &cret_type), &mut contbody);
+                self.transpile(*expression, (&cret, &cret_type), &mut contbody, &labels);
                 let call = CExpr::Call(Box::new(CExpr::Symbol("setjmp".to_string())), vec![cbuf]);
                 let cif = CStmt::If(call, contbody, vec![]);
                 block.push(cif);
@@ -280,10 +320,28 @@ impl Transpiler {
                     let carg_type = CTypeName::new("uintptr_t".to_string());
                     block.push(CStmt::Declaration(carg_type.0.to_string(), vec![(carg_type.1.clone().identifier(carg_name.clone()), None)]));
                     let carg = CExpr::Symbol(carg_name);
-                    self.transpile(arg, (&carg, &carg_type), block);
+                    self.transpile(arg, (&carg, &carg_type), block, labels);
                     cargs.push(carg);
                 }
                 let call = CExpr::Binary(sym.reference, Box::new(cargs[0].clone()), Box::new(cargs[1].clone()));
+                block.push(CStmt::Assign(target.0.clone(), CExpr::Cast(target.1.clone(), Box::new(call))));
+            },
+            Expr::Invoke(InvokeExpr { reference, arguments }) if matches!(*reference, Expr::Symbol(_)) => {
+                block.push(comment);
+                let Expr::Symbol(sym) = *reference else {
+                    panic!("invocation reference should be a symbol");
+                };
+                let cref = CExpr::Symbol(sym.reference);
+                let mut cargs = vec![];
+                for arg in arguments {
+                    let carg_name = self.gen_sym();
+                    let carg_type = CTypeName::new("uintptr_t".to_string());
+                    block.push(CStmt::Declaration(carg_type.0.to_string(), vec![(carg_type.1.clone().identifier(carg_name.clone()), None)]));
+                    let carg = CExpr::Symbol(carg_name);
+                    self.transpile(arg, (&carg, &carg_type), block, labels);
+                    cargs.push(carg);
+                }
+                let call = CExpr::Call(Box::new(cref), cargs);
                 block.push(CStmt::Assign(target.0.clone(), CExpr::Cast(target.1.clone(), Box::new(call))));
             },
             Expr::Invoke(InvokeExpr { reference, arguments }) => {
@@ -296,18 +354,55 @@ impl Transpiler {
                 }
                 let cref_type = CTypeName("uintptr_t".to_string(), Box::new(CDeclarator::Function(CFunctionDeclarator(Box::new(CDeclarator::Pointer(Box::new(CDeclarator::default()))), params.clone()))));
                 block.push(CStmt::Declaration(cref_type.0.to_string(), vec![(cref_type.1.clone().identifier(cref_name), None)]));
-                self.transpile(*reference, (&cref, &cref_type), block);
+                self.transpile(*reference, (&cref, &cref_type), block, labels);
                 let mut cargs = vec![];
                 for arg in arguments {
                     let carg_name = self.gen_sym();
                     let carg_type = CTypeName::new("uintptr_t".to_string());
                     block.push(CStmt::Declaration(carg_type.0.to_string(), vec![(carg_type.1.clone().identifier(carg_name.clone()), None)]));
                     let carg = CExpr::Symbol(carg_name);
-                    self.transpile(arg, (&carg, &carg_type), block);
+                    self.transpile(arg, (&carg, &carg_type), block, labels);
                     cargs.push(carg);
                 }
                 let call = CExpr::Call(Box::new(cref), cargs);
                 block.push(CStmt::Assign(target.0.clone(), CExpr::Cast(target.1.clone(), Box::new(call))));
+            },
+            Expr::Jump(JumpExpr { reference, arguments }) if matches!(&*reference, Expr::Symbol(sym) if labels.contains(&sym.reference)) => {
+                block.push(comment);
+                let mut cargs = vec![];
+                for arg in arguments {
+                    let carg_name = self.gen_sym();
+                    let carg_type = CTypeName::new("uintptr_t".to_string());
+                    block.push(CStmt::Declaration(carg_type.0.clone(), vec![(carg_type.1.clone().identifier(carg_name.clone()), None)]));
+                    let carg = CExpr::Symbol(carg_name);
+                    self.transpile(arg, (&carg, &carg_type), block, labels);
+                    cargs.push(carg);
+                }
+                for (i, carg) in cargs.into_iter().enumerate() {
+                    block.push(CStmt::Assign(CExpr::Symbol(self.jmp_var(i).clone()), carg));
+                }
+                let Expr::Symbol(symbol) = *reference else { panic!("jump expression target should be symbol"); };
+                block.push(CStmt::Goto(symbol.reference));
+            },
+            Expr::Jump(JumpExpr { reference, arguments }) if matches!(&*reference, Expr::Continuation(ContinuationExpr { escapes: false, .. })) => {
+                block.push(comment);
+                let cref_name = self.gen_sym();
+                let cref_type = CTypeName("jmp_buf".to_string(), Box::new(CDeclarator::Pointer(Box::new(CDeclarator::default()))));
+                let cref = CExpr::Symbol(cref_name.clone());
+                
+                let mut cargs = vec![];
+                for arg in arguments {
+                    let carg_name = self.gen_sym();
+                    let carg_type = CTypeName::new("uintptr_t".to_string());
+                    block.push(CStmt::Declaration(carg_type.0.clone(), vec![(carg_type.1.clone().identifier(carg_name.clone()), None)]));
+                    let carg = CExpr::Symbol(carg_name);
+                    self.transpile(arg, (&carg, &carg_type), block, labels);
+                    cargs.push(carg);
+                }
+                for (i, carg) in cargs.into_iter().enumerate() {
+                    block.push(CStmt::Assign(CExpr::Symbol(self.jmp_var(i).clone()), carg));
+                }
+                self.transpile(*reference, (&cref, &cref_type), block, labels);
             },
             Expr::Jump(JumpExpr { reference, arguments }) => {
                 block.push(comment);
@@ -315,14 +410,14 @@ impl Transpiler {
                 let cref_type = CTypeName("jmp_buf".to_string(), Box::new(CDeclarator::Pointer(Box::new(CDeclarator::default()))));
                 let cref = CExpr::Symbol(cref_name.clone());
                 block.push(CStmt::Declaration(cref_type.0.clone(), vec![(cref_type.1.clone().identifier(cref_name), None)]));
-                self.transpile(*reference, (&cref, &cref_type), block);
+                self.transpile(*reference, (&cref, &cref_type), block, labels);
                 let mut cargs = vec![];
                 for arg in arguments {
                     let carg_name = self.gen_sym();
                     let carg_type = CTypeName::new("uintptr_t".to_string());
                     block.push(CStmt::Declaration(carg_type.0.clone(), vec![(carg_type.1.clone().identifier(carg_name.clone()), None)]));
                     let carg = CExpr::Symbol(carg_name);
-                    self.transpile(arg, (&carg, &carg_type), block);
+                    self.transpile(arg, (&carg, &carg_type), block, labels);
                     cargs.push(carg);
                 }
                 for (i, carg) in cargs.into_iter().enumerate() {
@@ -337,15 +432,17 @@ impl Transpiler {
                 let ccond = CExpr::Symbol(ccond_name.clone());
                 let ccond_type = CTypeName::new("uintptr_t".to_string());
                 block.push(CStmt::Declaration(ccond_type.0.clone(), vec![(ccond_type.1.clone().identifier(ccond_name), None)]));
-                self.transpile(*condition, (&ccond, &ccond_type), block);
+                self.transpile(*condition, (&ccond, &ccond_type), block, labels);
                 let mut cconsequent = vec![];
-                self.transpile(*consequent, target, &mut cconsequent);
+                self.transpile(*consequent, target, &mut cconsequent, labels);
                 let mut calternate = vec![];
-                self.transpile(*alternate, target, &mut calternate);
+                self.transpile(*alternate, target, &mut calternate, labels);
                 let ifstmt = CStmt::If(ccond, cconsequent, calternate);
                 block.push(ifstmt);
             },
             Expr::Storage(StorageExpr { reference, arguments }) => {
+                let mut labels = labels.clone();
+                labels.remove(&reference);
                 block.push(comment);
                 let cref = CExpr::Symbol(reference.clone());
                 let cref_type = CTypeName("uintptr_t".to_string(), Box::new(CDeclarator::Array(Box::new(CDeclarator::default()), CExpr::Literal(arguments.len().try_into().expect("storage too large")))));
@@ -354,7 +451,7 @@ impl Transpiler {
                     let i = i.try_into().expect("storage too large");
                     let celt = CExpr::Subscript(Box::new(cref.clone()), Box::new(CExpr::Literal(i)));
                     let celt_type = CTypeName::new("uintptr_t".to_string());
-                    self.transpile(arg, (&celt, &celt_type), block);
+                    self.transpile(arg, (&celt, &celt_type), block, &labels);
                 }
                 block.push(CStmt::Assign(target.0.clone(), CExpr::Cast(target.1.clone(), Box::new(cref))));
             },

@@ -64,6 +64,7 @@ fn collect_free_variables(expr: &Expr, bound: &HashSet<String>, free: &mut HashS
 
 fn rename_variable(from: &mut String, mapping: &mut HashMap<String, String>, used: &mut HashSet<String>) {
     let base = from.replace("-", "_");
+    let base = from.replace(".", "_");
     let mut reference = base.clone();
     for i in 0.. {
         if used.contains(&reference) {
@@ -134,6 +135,61 @@ fn rename_variables(expr: &mut Expr, mapping: &HashMap<String, String>, used: &m
     }
 }
 
+fn escape_analysis(expr: &mut Expr, escapes: bool, escapees: &mut HashSet<String>) {
+    match expr {
+        Expr::Literal(_) => {},
+        Expr::If(ife) => {
+            escape_analysis(&mut ife.condition, true, escapees);
+            escape_analysis(&mut ife.consequent, true, escapees);
+            escape_analysis(&mut ife.alternate, true, escapees);
+        },
+        Expr::Storage(storage) => {
+            for arg in &mut storage.arguments {
+                let mut expr_escapees = HashSet::new();
+                escape_analysis(arg, true, &mut expr_escapees);
+                expr_escapees.remove(&storage.reference);
+                escapees.extend(expr_escapees);
+            }
+        },
+        Expr::Invoke(invoke) => {
+            escape_analysis(&mut invoke.reference, true, escapees);
+            for arg in &mut invoke.arguments {
+                escape_analysis(arg, true, escapees);
+            }
+        },
+        Expr::Function(function) => {
+            escape_analysis(&mut function.expression, true, &mut HashSet::new());
+        },
+        Expr::With(with) => {
+            let mut expr_escapees = HashSet::new();
+            escape_analysis(&mut with.expression, true, &mut expr_escapees);
+            with.escapes |= expr_escapees.remove(&with.reference);
+            escapees.extend(expr_escapees);
+        },
+        Expr::Continuation(continuation) => {
+            continuation.escapes |= escapes;
+            let mut expr_escapees = HashSet::new();
+            escape_analysis(&mut continuation.expression, true, &mut expr_escapees);
+            continuation.escapes |= expr_escapees.remove(&continuation.reference);
+            for param in &continuation.parameters {
+                expr_escapees.remove(param);
+            }
+            escapees.extend(expr_escapees);
+        },
+        Expr::Jump(jump) => {
+            escape_analysis(&mut jump.reference, false, escapees);
+            for arg in &mut jump.arguments {
+                escape_analysis(arg, true, escapees);
+            }
+        },
+        Expr::Symbol(symbol) if escapes => {
+            escapees.insert(symbol.reference.clone());
+        },
+        Expr::Symbol(_) => {},
+        Expr::Meta(_meta) => panic!("meta expressions should have been expanded already"),
+    }
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let source = std::fs::read_to_string(&args[1])
@@ -167,6 +223,7 @@ fn main() {
     println!("Compiled Outputs:");
     let mut transpiler = transpile::Transpiler::default();
     for mut expr in program {
+        escape_analysis(&mut expr, true, &mut HashSet::new());
         let mut reserved_names = HashSet::new();
         reserved_names.insert("return".to_string());
         reserved_names.insert("break".to_string());
@@ -177,7 +234,7 @@ fn main() {
         reserved_names.insert("int".to_string());
         collect_free_variables(&expr, &HashSet::new(), &mut reserved_names);
         rename_variables(&mut expr, &HashMap::new(), &mut reserved_names);
-        transpiler.transpile(expr, (&transpile::CExpr::Literal(0), &transpile::CTypeName::new("void".to_string())), &mut Vec::new());
+        transpiler.transpile(expr, (&transpile::CExpr::Literal(0), &transpile::CTypeName::new("void".to_string())), &mut Vec::new(), &HashSet::new());
     }
     println!("{}", transpiler);
 }
