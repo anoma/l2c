@@ -1,6 +1,6 @@
 WHITESPACE = _{ " " | "\t" | NEWLINE }
 
-COMMENT = _{ "//" ~ (!"\n" ~ ANY)* | "/*" ~ (!"*/" ~ ANY)* ~ "*/" }
+COMMENT = _{ "(*" ~ (!"*)" ~ ANY)* ~ "*)" }
 
 token = @{ (!(";" | ":" | "{" | "[" | "(" | ")" | "]" | "}" | WHITESPACE) ~ ANY)+ }
 
