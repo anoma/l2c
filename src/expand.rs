@@ -19,7 +19,7 @@ pub fn identity(expr: &Expr, _counter: u32) -> Result<Expr, JumpBuffer> {
 pub fn init_sexprs(env: &mut HashMap<String, Expr>) {
     let nil = Expr::Meta(MetaExpr { reference: None, fragment: SExpr::List(vec![]) });
     env.insert("nil".to_string(), nil);
-    for i in 33u8..126u8 {
+    for i in 33u8..127u8 {
         let reference = vec!['-', i as char, '-'].into_iter().collect();
         let sexpr = Expr::Meta(MetaExpr { reference: None, fragment: SExpr::Char(i as char) });
         env.insert(reference, sexpr);
