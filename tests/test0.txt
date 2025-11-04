@@ -1,0 +1,7 @@
+(* Demonstrate using an expression as a macro. *)
+
+((function _ (x) [car [cdr x]])
+  [(function factorial (n)
+    (if [== n (literal 00000000000000000000000000000000)]
+      (literal 00000000000000000000000000000001)
+      [* n [factorial [- n (literal 00000000000000000000000000000001)]]])) (literal 00000000000000000000000000000101)])

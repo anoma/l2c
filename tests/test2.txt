@@ -1,0 +1,6 @@
+(* Compute factorials using recursion. *)
+
+[(function factorial (n)
+  (if [== n (literal 00000000000000000000000000000000)]
+    (literal 00000000000000000000000000000001)
+    [* n [factorial [- n (literal 00000000000000000000000000000001)]]])) (literal 00000000000000000000000000000101)]

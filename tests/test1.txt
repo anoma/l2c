@@ -1,0 +1,8 @@
+(* Compute factorial using looping. *)
+
+[(function factorial (n)
+  (with ret
+    {(continuation loop (m acc)
+      (if [== m (literal 00000000000000000000000000000000)]
+        {ret acc}
+        {loop [- m (literal 00000000000000000000000000000001)] [* m acc]})) n (literal 00000000000000000000000000000001)})) (literal 00000000000000000000000000000011)]

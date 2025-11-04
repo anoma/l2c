@@ -1,0 +1,221 @@
+(function cadr (l) [car [cdr l]])
+(function caadr (l) [car [cadr l]])
+(function cadadr (l) [car [cdr [cadr l]]])
+(function cddr (l) [cdr [cdr l]])
+(function cdddr (l) [cdr [cddr l]])
+(function cdar (l) [cdr [car l]])
+(function cadar (l) [car [@cdar l]])
+(function caddar (l) [car [cdr [cdar l]]])
+(function caddr (l) [car [cdr [cdr l]]])
+(function cadddr (l) [car [cdr [cdr [cdr l]]]])
+(function caddddr (l) [car [cdr [cdr [cdr [cdr l]]]]])
+(function cadddddr (l) [car [cdr [cdr [cdr [cdr [cdr l]]]]]])
+(function caar (l) [car [car l]])
+(function coons (a b c) [cons a [cons b c]])
+(function cooons (a b c d) [cons a [coons b c d]])
+(function coooons (a b c d e) [cons a [cooons b c d e]])
+(function cooooons (a b c d e f) [cons a [coooons b c d e f]])
+(function coooooons (a b c d e f g) [cons a [cooooons b c d e f g]])
+(function cooooooons (a b c d e f g h) [cons a [coooooons b c d e f g h]])
+
+(* Macro to convert a value into a literal expression that creates it. *)
+
+(function =# (binary)
+  [cons [cooooooons -l- -i- -t- -e- -r- -a- -l- nil]
+    [cons (with return {(continuation write (count in out)
+        (if count
+          {write [- count (literal 00000000000000000000000000000001)]
+            [>> in (literal 00000000000000000000000000000001)]
+            [cons (if [& in (literal 00000000000000000000000000000001)]
+              -1- -0-) out]}
+          {return out}))
+        (literal 00000000000000000000000000100000) binary nil})
+      nil]])
+
+(* Macro to convert a value in decimal into a literal expression. *)
+
+(function # (l) [=#
+  (with return {(continuation read (in out)
+    (if [null? in]
+      {return out}
+      {read [cdr in] [+ [* out (literal 00000000000000000000000000001010)]
+        (if [char= [car in] -9-] (literal 00000000000000000000000000001001)
+        (if [char= [car in] -8-] (literal 00000000000000000000000000001000)
+        (if [char= [car in] -7-] (literal 00000000000000000000000000000111)
+        (if [char= [car in] -6-] (literal 00000000000000000000000000000110)
+        (if [char= [car in] -5-] (literal 00000000000000000000000000000101)
+        (if [char= [car in] -4-] (literal 00000000000000000000000000000100)
+        (if [char= [car in] -3-] (literal 00000000000000000000000000000011)
+        (if [char= [car in] -2-] (literal 00000000000000000000000000000010)
+        (if [char= [car in] -1-] (literal 00000000000000000000000000000001)
+          (literal 00000000000000000000000000000000))))))))))]}))
+    [cadr l] (literal 00000000000000000000000000000000)})])
+
+
+(* Macro to convert a value in hexadecimal into a literal expression. *)
+
+(function 0x (l) [=#
+  (with return {(continuation read (in out)
+    (if [null? in]
+      {return out}
+      {read [cdr in] [+ [* out (literal 00000000000000000000000000010000)]
+        (if [char= [car in] -F-] (literal 00000000000000000000000000001111)
+        (if [char= [car in] -E-] (literal 00000000000000000000000000001110)
+        (if [char= [car in] -D-] (literal 00000000000000000000000000001101)
+        (if [char= [car in] -C-] (literal 00000000000000000000000000001100)
+        (if [char= [car in] -B-] (literal 00000000000000000000000000001011)
+        (if [char= [car in] -A-] (literal 00000000000000000000000000001010)
+        (if [char= [car in] -9-] (literal 00000000000000000000000000001001)
+        (if [char= [car in] -8-] (literal 00000000000000000000000000001000)
+        (if [char= [car in] -7-] (literal 00000000000000000000000000000111)
+        (if [char= [car in] -6-] (literal 00000000000000000000000000000110)
+        (if [char= [car in] -5-] (literal 00000000000000000000000000000101)
+        (if [char= [car in] -4-] (literal 00000000000000000000000000000100)
+        (if [char= [car in] -3-] (literal 00000000000000000000000000000011)
+        (if [char= [car in] -2-] (literal 00000000000000000000000000000010)
+        (if [char= [car in] -1-] (literal 00000000000000000000000000000001)
+          (literal 00000000000000000000000000000000))))))))))))))))]}))
+    [cadr l] (literal 00000000000000000000000000000000)})])
+
+(* Macro to convert an s-expression into an expression to generate it. *)
+
+(function ` (l)
+  [(function aux (s)
+    (if [null? s] [cooons -n- -i- -l- nil]
+
+    (if (if [null? s] #:0 (if [token? s] #:0 (if [null? [car s]]
+      #:0 (if [char= [caar s] -,-] [null? [cdar s]] #:0))))
+          [cadr s]
+
+    [coooons [coooooons -i- -n- -v- -o- -k- -e- nil]
+      [coooons -c- -o- -n- -s- nil]
+        (if [token? s]
+            [cooons --- [car s] --- nil]
+            [aux [car s]])
+          [aux [cdr s]] nil]))) [cadr l]])
+
+(* Function to reverse a list. *)
+
+(function meta.reverse (l)
+  (with return
+    {(continuation _ (l reversed)
+      (if [null? l]
+        {return reversed}
+        {_ [cdr l] [cons [car l] reversed]})) l nil}))
+
+(* Function to apply the given map to a list. *)
+
+(function meta.map (l mapper)
+  (with return
+    {(continuation aux (in out)
+      (if [null? in]
+        {return [meta.reverse out]}
+        {aux [cdr in] [cons [mapper [car in]] out]})) l nil}))
+
+(* Macro to implement a let binding. *)
+
+(function let (l)
+  `:(with let.return
+    ,:[coons `:jump `:(continuation let.aux ,:[meta.map [cdr [meta.reverse [cdr l]]] car]
+      {let.return ,:[car [meta.reverse l]]}) [meta.map [cdr [meta.reverse [cdr l]]] cadr]]))
+
+(* Macros for boolean constants. *)
+
+(function false (l) [=# #:0])
+
+(function true (l) [=# #:1])
+
+(* Macro for short-circuit disjunction. *)
+
+(function or (l) (with return
+  {(continuation loop (l sexpr)
+      (if [null? l]
+        {return sexpr}
+        {loop [cdr l] `:(let (or.temp ,:[car l]) (if or.temp or.temp ,:sexpr))}))
+    [meta.reverse [cdr l]] `:(false)}))
+
+(* Macro for short-circuit conjunction. *)
+
+(function and (l) (with return
+  {(continuation loop (l sexpr)
+      (if [null? l]
+        {return sexpr}
+        {loop [cdr l] `:(let (and.temp ,:[car l]) (if and.temp ,:sexpr and.temp))}))
+    [meta.reverse [cdr l]] `:(true)}))
+
+(* Macro for logical negation. *)
+
+(function not (l) `:(if ,:[cadr l] (false) (true)))
+
+(* Macro to enable binding to multiple "return" values. *)
+
+(function bind (l)
+  `:(with bind.return
+      {(continuation bind.temp (bind) ,:[caddr l])
+        (continuation bind.cont ,:[cadr l] {bind.return ,:[cadddr l]})}))
+
+(* Macro to do a named-let. *)
+
+(function loop (l)
+  (let (bindings [meta.reverse [cdr [meta.reverse [cddr l]]]])
+    `:(with loop.return
+        {(continuation ,:[cadr l] ,:[meta.map bindings car]
+          {loop.return ,:[car [meta.reverse l]]}) , [meta.map bindings cadr]})))
+
+(* Macro to sequence a set of expressions. *)
+
+(function do (l)
+  `:(with do.return
+    ,:(loop make-do (acc `:{do.return do.arg}) (exprs [meta.reverse [cdr l]])
+        (if [null? exprs]
+          acc
+          {make-do `:{(continuation do.cont (do.arg) ,:acc) ,:[car exprs]} [cdr exprs]}))))
+
+(* Some example code using the above macros. *)
+
+(function sequence-things () (do [a] [b] [c] [d]))
+
+(* Demonstrate an approach to returning multiple values. *)
+
+(function div (a b return)
+  {return [/ a b] [% a b]})
+
+(* Compute bezout's identity. *)
+
+(function bezout (a b return)
+  (if [== a #:0]
+    {return b #:0 #:1}
+    (bind (c d) [div b a bind]
+      (bind (e f g) [bezout d a bind]
+        {return e [- g [* f c]] f}))))
+
+(* Show how the bezout identity function could be called. *)
+
+(function print-bezout (a b)
+  (bind (c d e) [bezout a b bind]
+    [print c d e]))
+
+(* Use a named-let to compute a factorial. *)
+
+(loop factorial-loop (n #:6) (acc #:1)
+  (if [== n #:0]
+    acc
+    {factorial-loop [- n #:1] [* acc n]}))
+
+(and #:3 #:4 #:5)
+
+(or #:3 #:4)
+
+(not #:0)
+
+(let (x #:4) (y #:3) [* x y])
+
+[* #:5 #:6]
+
+(* A decimal value. *)
+
+#:22
+
+(* A hexadecimal value. *)
+
+0x:FF

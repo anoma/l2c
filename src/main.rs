@@ -1,7 +1,7 @@
-mod sexpr;
-mod expr;
-mod transpile;
-mod expand;
+pub mod sexpr;
+pub mod expr;
+pub mod transpile;
+pub mod expand;
 use std::rc::Rc;
 use std::collections::HashMap;
 
