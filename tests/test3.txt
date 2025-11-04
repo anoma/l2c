@@ -203,7 +203,44 @@
 
 (function char (l) [=# [meta.char-aux [caadr l]]])
 
+(* Macro for supporting string literal. *)
+
+(function " (l)
+  (loop add-word (str [cdr l]) (index #:0) (exprs nil) (instrs nil) (buf #:0)
+    (let (sub-index [% index #:4])
+    (let (expr (loop build (instrs instrs) (expr [=# buf]) (if [null? instrs] expr {build [cdr instrs] `:[| ,:[car instrs] ,:expr]})))
+    (let (next-exprs (if [== sub-index #:0] [cons expr exprs] exprs))
+    (let (next-instrs (if [== sub-index #:0] nil instrs))
+    (let (next-buf (if [== sub-index #:0] #:0 buf))
+      (if [null? str] (let (buf [| next-buf [<< (nul) [* sub-index #:8]]])
+        (let (expr (loop build (instrs next-instrs) (expr [=# buf]) (if [null? instrs] expr {build [cdr instrs] `:[| ,:[car instrs] ,:expr]})))
+          [coons `:storage `:dquote.tmp [cdr [meta.reverse [cons expr next-exprs]]]]))
+
+      (if (and [null? [car str]] [null? [cdr str]]) {add-word [cdr str] index exprs instrs buf}
+
+      (if (and [null? [car str]] [token? [cadr str]])
+        (let (buf [| next-buf [<< (space) [* sub-index #:8]]])
+          {add-word [cdr str] [+ index #:1] next-exprs next-instrs buf})
+
+      (if [null? [car str]] {add-word [cdr str] index exprs instrs buf}
+
+      (if [token? [car str]] (let (buf [| next-buf [<< [meta.char-aux [caar str]] [* sub-index #:8]]])
+        {add-word [cons [cdar str] [cdr str]] [+ index #:1] next-exprs next-instrs buf})
+
+        {add-word [cdr str] [+ index #:1] next-exprs
+          [cons `:[<< ,:[car str] ,:[=# [* sub-index #:8]]] next-instrs] next-buf}))))))))))))
+
+(* Macro for null terminator. *)
+
+(function nul (l) [=# #:0])
+
+(* Macro for space character. *)
+
+(function space (l) [=# #:32])
+
 (* Some example code using the above macros. *)
+
+(" hell(# 65)o)
 
 (case == #:10 (#:2 #:200) (#:3 #:300) #:400)
 
