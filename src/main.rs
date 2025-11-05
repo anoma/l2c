@@ -12,7 +12,7 @@ fn main() {
     let mut program = expr::parse_program(&source).unwrap();
     println!("Source Program:");
     for expr in &program {
-        println!("{}", expr);
+        println!("{expr}");
     }
     println!();
     println!("Expanded Program:");
@@ -40,5 +40,5 @@ fn main() {
     for expr in program {
         transpiler.transpile(expr);
     }
-    println!("{}", transpiler);
+    println!("{transpiler}");
 }

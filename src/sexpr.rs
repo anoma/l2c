@@ -12,7 +12,7 @@ pub enum SExpr {
 
 impl SExpr {
     pub fn make_symbol(string: &str) -> SExpr {
-        SExpr::List(string.chars().map(|ch| SExpr::Char(ch)).collect())
+        SExpr::List(string.chars().map(SExpr::Char).collect())
     }
 
     pub fn parse_token(pair: Pair<Rule>) -> SExpr {
@@ -85,14 +85,14 @@ impl std::fmt::Display for SExpr {
             [Self::Char(_), ..] => {
                 for ch in lst {
                     let Self::Char(ch) = ch else { panic!("must be character") };
-                    write!(f, "{}", ch)?;
+                    write!(f, "{ch}")?;
                 }
             },
             _ => {
                 let mut iter = lst.iter();
                 write!(f, "({}", iter.next().expect("list should be non-empty"))?;
-                while let Some(fragment) = iter.next() {
-                    write!(f, " {}", fragment)?;
+                for fragment in iter {
+                    write!(f, " {fragment}")?;
                 }
                 write!(f, ")")?;
             }

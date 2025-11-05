@@ -26,24 +26,24 @@ pub enum CExpr {
 impl std::fmt::Display for CExpr {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            Self::Symbol(string) => write!(f, "{}", string),
-            Self::Literal(value) => write!(f, "{}", value),
+            Self::Symbol(string) => write!(f, "{string}"),
+            Self::Literal(value) => write!(f, "{value}"),
             Self::Call(reference, args) => {
-                write!(f, "{}(", reference)?;
+                write!(f, "{reference}(")?;
                 if let [arg0, rest @ ..] = &args[..] {
-                    write!(f, "{}", arg0)?;
+                    write!(f, "{arg0}")?;
                     for arg in rest {
-                        write!(f, ", {}", arg)?;
+                        write!(f, ", {arg}")?;
                     }
                 }
                 write!(f, ")")
             },
-            Self::AddressOf(expr) => write!(f, "&{}", expr),
-            Self::Indirection(expr) => write!(f, "*{}", expr),
-            Self::Not(expr) => write!(f, "!{}", expr),
-            Self::Subscript(expr1, expr2) => write!(f, "{}[{}]", expr1, expr2),
+            Self::AddressOf(expr) => write!(f, "&{expr}"),
+            Self::Indirection(expr) => write!(f, "*{expr}"),
+            Self::Not(expr) => write!(f, "!{expr}"),
+            Self::Subscript(expr1, expr2) => write!(f, "{expr1}[{expr2}]"),
             Self::Cast(typename, expr) => write!(f, "({} {}) {}", typename.0, typename.1, expr),
-            Self::Binary(op, expr1, expr2) => write!(f, "({} {} {})", expr1, op, expr2),
+            Self::Binary(op, expr1, expr2) => write!(f, "({expr1} {op} {expr2})"),
         }
     }
 }
@@ -55,11 +55,11 @@ impl std::fmt::Display for CFunctionDeclarator {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         let decl = &self.0;
         let params = &self.1;
-        write!(f, "{}(", decl)?;
+        write!(f, "{decl}(")?;
         if let [(spec0, decl0), rest @ ..] = &params[..] {
-            write!(f, "{} {}", spec0, decl0)?;
+            write!(f, "{spec0} {decl0}")?;
             for (spec, decl) in rest {
-                write!(f, ", {} {}", spec, decl)?;
+                write!(f, ", {spec} {decl}")?;
             }
         }
         write!(f, ")")
@@ -100,10 +100,10 @@ impl Default for CDeclarator {
 impl std::fmt::Display for CDeclarator {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            Self::Identifier(ident) => write!(f, "{}", ident),
-            Self::Pointer(decl) => write!(f, "(*{})", decl),
-            Self::Array(decl, expr) => write!(f, "({}[{}])", decl, expr),
-            Self::Function(decl) => write!(f, "{}", decl),
+            Self::Identifier(ident) => write!(f, "{ident}"),
+            Self::Pointer(decl) => write!(f, "(*{decl})"),
+            Self::Array(decl, expr) => write!(f, "({decl}[{expr}])"),
+            Self::Function(decl) => write!(f, "{decl}"),
         }
     }
 }
@@ -124,26 +124,26 @@ impl std::fmt::Display for CStmt {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
             Self::Declaration(spec, decls) => {
-                write!(f, "{}", spec)?;
+                write!(f, "{spec}")?;
                 if let [(decl0, init0), rest @ ..] = &decls[..] {
-                    write!(f, " {}", decl0)?;
+                    write!(f, " {decl0}")?;
                     if let Some(init0) = init0 {
-                        write!(f, " = {}", init0)?;
+                        write!(f, " = {init0}")?;
                     }
                     for (decl, init) in rest {
-                        write!(f, ", {}", decl)?;
+                        write!(f, ", {decl}")?;
                         if let Some(init) = init {
-                            write!(f, " = {}", init)?;
+                            write!(f, " = {init}")?;
                         }
                     }
                 }
                 writeln!(f, ";")
             },
-            Self::Assign(dst, src) => writeln!(f, "{} = {};", dst, src),
+            Self::Assign(dst, src) => writeln!(f, "{dst} = {src};"),
             Self::If(cond, cons, alt) => {
-                writeln!(f, "if({}) {{", cond)?;
+                writeln!(f, "if({cond}) {{")?;
                 for stmt in cons {
-                    write!(f, "{}", stmt)?;
+                    write!(f, "{stmt}")?;
                 }
                 write!(f, "}}")?;
                 if alt.is_empty() {
@@ -151,23 +151,23 @@ impl std::fmt::Display for CStmt {
                 } else {
                     writeln!(f, " else {{")?;
                     for stmt in alt {
-                        write!(f, "{}", stmt)?;
+                        write!(f, "{stmt}")?;
                     }
                     writeln!(f, "}}")
                 }
             },
-            Self::Return(val) => writeln!(f, "return {};", val),
+            Self::Return(val) => writeln!(f, "return {val};"),
             Self::Function(spec, decl, body) => {
-                writeln!(f, "{} {} {{", spec, decl)?;
+                writeln!(f, "{spec} {decl} {{")?;
                 for stmt in body {
-                    write!(f, "{}", stmt)?;
+                    write!(f, "{stmt}")?;
                 }
                 writeln!(f, "}}")
             },
-            Self::Comment(comment) => writeln!(f, "// {}", comment),
-            Self::Expr(expr) => writeln!(f, "{};", expr),
-            Self::Label(identifier) => writeln!(f, "{}:", identifier),
-            Self::Goto(identifier) => writeln!(f, "goto {};", identifier),
+            Self::Comment(comment) => writeln!(f, "// {comment}"),
+            Self::Expr(expr) => writeln!(f, "{expr};"),
+            Self::Label(identifier) => writeln!(f, "{identifier}:"),
+            Self::Goto(identifier) => writeln!(f, "goto {identifier};"),
         }
     }
 }
@@ -220,7 +220,7 @@ fn collect_free_variables(expr: &Expr, bound: &HashSet<String>, free: &mut HashS
             let mut bound = bound.clone();
             bound.insert(storage.reference.clone());
             for arg in &storage.arguments {
-                collect_free_variables(&arg, &bound, free);
+                collect_free_variables(arg, &bound, free);
             }
         },
         Expr::Meta(_meta) => panic!("meta expressions should have been expanded already"),
@@ -232,7 +232,7 @@ fn rename_variable(from: &mut String, mapping: &mut HashMap<String, String>, use
     let mut reference = base.clone();
     for i in 0.. {
         if used.contains(&reference) {
-            reference = format!("{}{}", base, i);
+            reference = format!("{base}{i}");
         } else {
             used.insert(reference.clone());
             mapping.insert(from.clone(), reference.clone());
@@ -292,7 +292,7 @@ fn rename_variables(expr: &mut Expr, mapping: &HashMap<String, String>, used: &m
             let mut mapping = mapping.clone();
             rename_variable(&mut storage.reference, &mut mapping, used);
             for arg in &mut storage.arguments {
-                rename_variables(arg, &mut mapping, used);
+                rename_variables(arg, &mapping, used);
             }
         },
         Expr::Meta(_meta) => panic!("meta expressions should have been expanded already"),
@@ -534,7 +534,7 @@ impl Transpiler {
                 for _ in &arguments {
                     params.push(("uintptr_t".to_string(), CDeclarator::default()));
                 }
-                let cref_type = CTypeName("uintptr_t".to_string(), Box::new(CDeclarator::Function(CFunctionDeclarator(Box::new(CDeclarator::Pointer(Box::new(CDeclarator::default()))), params.clone()))));
+                let cref_type = CTypeName("uintptr_t".to_string(), Box::new(CDeclarator::Function(CFunctionDeclarator(Box::new(CDeclarator::Pointer(Box::default())), params.clone()))));
                 block.push(CStmt::Declaration(cref_type.0.to_string(), vec![(cref_type.1.clone().identifier(cref_name), None)]));
                 self.transpile_aux(*reference, (&cref, &cref_type), block, labels);
                 let mut cargs = vec![];
@@ -569,7 +569,7 @@ impl Transpiler {
             Expr::Jump(JumpExpr { reference, arguments }) if matches!(&*reference, Expr::Continuation(ContinuationExpr { escapes: false, .. })) => {
                 block.push(comment);
                 let cref_name = self.gen_sym();
-                let cref_type = CTypeName("jmp_buf".to_string(), Box::new(CDeclarator::Pointer(Box::new(CDeclarator::default()))));
+                let cref_type = CTypeName("jmp_buf".to_string(), Box::new(CDeclarator::Pointer(Box::default())));
                 let cref = CExpr::Symbol(cref_name.clone());
                 
                 let mut cargs = vec![];
@@ -589,7 +589,7 @@ impl Transpiler {
             Expr::Jump(JumpExpr { reference, arguments }) => {
                 block.push(comment);
                 let cref_name = self.gen_sym();
-                let cref_type = CTypeName("jmp_buf".to_string(), Box::new(CDeclarator::Pointer(Box::new(CDeclarator::default()))));
+                let cref_type = CTypeName("jmp_buf".to_string(), Box::new(CDeclarator::Pointer(Box::default())));
                 let cref = CExpr::Symbol(cref_name.clone());
                 block.push(CStmt::Declaration(cref_type.0.clone(), vec![(cref_type.1.clone().identifier(cref_name), None)]));
                 self.transpile_aux(*reference, (&cref, &cref_type), block, labels);
@@ -627,7 +627,7 @@ impl Transpiler {
                 labels.remove(&reference);
                 block.push(comment);
                 let cref = CExpr::Symbol(reference.clone());
-                let cref_type = CTypeName("uintptr_t".to_string(), Box::new(CDeclarator::Array(Box::new(CDeclarator::default()), CExpr::Literal(arguments.len().try_into().expect("storage too large")))));
+                let cref_type = CTypeName("uintptr_t".to_string(), Box::new(CDeclarator::Array(Box::default(), CExpr::Literal(arguments.len().try_into().expect("storage too large")))));
                 block.push(CStmt::Declaration(cref_type.0.clone(), vec![(cref_type.1.identifier(reference), None)]));
                 for (i, arg) in arguments.into_iter().enumerate() {
                     let i = i.try_into().expect("storage too large");
@@ -661,11 +661,11 @@ impl Transpiler {
 
 impl std::fmt::Display for Transpiler {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        println!("#include <stdint.h>");
-        println!("#include <setjmp.h>");
-        println!();
+        writeln!(f, "#include <stdint.h>")?;
+        writeln!(f, "#include <setjmp.h>")?;
+        writeln!(f)?;
         for stmt in &self.cprogam {
-            write!(f, "{}", stmt)?;
+            write!(f, "{stmt}")?;
         }
         Ok(())
     }

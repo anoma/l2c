@@ -89,9 +89,9 @@ impl std::fmt::Display for Expr {
             Self::Function(function) => {
                 write!(f, "(function {} (", function.reference)?;
                 if let [param0, rest @ ..] = &function.parameters[..] {
-                    write!(f, "{}", param0)?;
+                    write!(f, "{param0}")?;
                     for param in rest {
-                        write!(f, " {}", param)?;
+                        write!(f, " {param}")?;
                     }
                 }
                 write!(f, ") {})", function.expression)
@@ -99,9 +99,9 @@ impl std::fmt::Display for Expr {
             Self::Continuation(continuation) => {
                 write!(f, "(continuation {} (", continuation.reference)?;
                 if let [param0, rest @ ..] = &continuation.parameters[..] {
-                    write!(f, "{}", param0)?;
+                    write!(f, "{param0}")?;
                     for param in rest {
-                        write!(f, " {}", param)?;
+                        write!(f, " {param}")?;
                     }
                 }
                 write!(f, ") {})", continuation.expression)
@@ -109,21 +109,21 @@ impl std::fmt::Display for Expr {
             Self::Invoke(invoke) => {
                 write!(f, "[{}", invoke.reference)?;
                 for arg in &invoke.arguments {
-                    write!(f, " {}", arg)?;
+                    write!(f, " {arg}")?;
                 }
                 write!(f, "]")
             },
             Self::Jump(invoke) => {
                 write!(f, "{{{}", invoke.reference)?;
                 for arg in &invoke.arguments {
-                    write!(f, " {}", arg)?;
+                    write!(f, " {arg}")?;
                 }
                 write!(f, "}}")
             },
             Self::Storage(storage) => {
                 write!(f, "(storage {}", storage.reference)?;
                 for arg in &storage.arguments {
-                    write!(f, " {}", arg)?;
+                    write!(f, " {arg}")?;
                 }
                 write!(f, ")")
             },
@@ -138,7 +138,7 @@ pub enum ParserError {
     ExpectedString(SExpr),
     ExpectedList(SExpr),
     UnexpectedLiteral(String),
-    SExprError(pest::error::Error<Rule>),
+    SExprError(Box<pest::error::Error<Rule>>),
 }
 
 pub fn parse_string(sexpr: SExpr) -> Result<String, ParserError> {
@@ -254,7 +254,7 @@ pub fn parse_expr(sexpr: SExpr) -> Result<Expr, ParserError> {
 }
 
 pub fn parse_program(source: &str) -> Result<Vec<Expr>, ParserError> {
-    let program = L2Parser::parse(Rule::program, source).map_err(|x| ParserError::SExprError(x))?;
+    let program = L2Parser::parse(Rule::program, source).map_err(|x| ParserError::SExprError(Box::new(x)))?;
     let mut fragments = vec![];
     for fragment in program {
         match fragment.as_rule() {

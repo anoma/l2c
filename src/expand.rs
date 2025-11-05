@@ -13,7 +13,7 @@ pub struct JumpBuffer {
 pub type Continuation<'a> = Rc<dyn Fn(&Expr, u32) -> Result<Expr, JumpBuffer> + 'a>;
 
 pub fn identity(expr: &Expr, _counter: u32) -> Result<Expr, JumpBuffer> {
-    return Ok(expr.clone());
+    Ok(expr.clone())
 }
 
 pub fn init_sexprs(env: &mut HashMap<String, Expr>) {
@@ -60,13 +60,13 @@ fn eval_invoke(invoke: &InvokeExpr, counter: u32, env: &HashMap<String, Expr>, g
                 (Expr::Symbol(sym), [Expr::Literal(a), Expr::Literal(b)]) if sym.reference == ">" =>
                     Ok(Expr::Literal(LiteralExpr { value: u32::from(a.value > b.value) })),
                 (Expr::Symbol(sym), [Expr::Literal(a), Expr::Literal(b)]) if sym.reference == "<<" =>
-                    Ok(Expr::Literal(LiteralExpr { value: u32::from(a.value << b.value) })),
+                    Ok(Expr::Literal(LiteralExpr { value: (a.value << b.value) })),
                 (Expr::Symbol(sym), [Expr::Literal(a), Expr::Literal(b)]) if sym.reference == ">>" =>
-                    Ok(Expr::Literal(LiteralExpr { value: u32::from(a.value >> b.value) })),
+                    Ok(Expr::Literal(LiteralExpr { value: (a.value >> b.value) })),
                 (Expr::Symbol(sym), [Expr::Literal(a), Expr::Literal(b)]) if sym.reference == "&" =>
-                    Ok(Expr::Literal(LiteralExpr { value: u32::from(a.value & b.value) })),
+                    Ok(Expr::Literal(LiteralExpr { value: (a.value & b.value) })),
                 (Expr::Symbol(sym), [Expr::Literal(a), Expr::Literal(b)]) if sym.reference == "|" =>
-                    Ok(Expr::Literal(LiteralExpr { value: u32::from(a.value | b.value) })),
+                    Ok(Expr::Literal(LiteralExpr { value: (a.value | b.value) })),
                 (Expr::Symbol(sym), [Expr::Meta(MetaExpr { fragment: SExpr::List(list), reference })]) if sym.reference == "cdr" =>
                     Ok(Expr::Meta(MetaExpr { fragment: SExpr::List(list[1..].to_vec()), reference: reference.clone() })),
                 (Expr::Symbol(sym), [Expr::Meta(MetaExpr { fragment: SExpr::List(list), reference })]) if sym.reference == "car" =>
@@ -100,18 +100,18 @@ fn eval_invoke(invoke: &InvokeExpr, counter: u32, env: &HashMap<String, Expr>, g
                     }
                     eval(&function.expression, counter, &env, global_env, Rc::new(identity))
                 },
-                (Expr::Function(_), _) => panic!("incorrect argument count to: {}", reference),
+                (Expr::Function(_), _) => panic!("incorrect argument count to: {reference}"),
                 _ => panic!("unknown function: {:?}", Expr::Invoke(InvokeExpr {reference: Box::new(reference.clone()), arguments: args.clone()})),
             }
         }))
     }
 }
 
-fn eval_jump(jump: &JumpExpr, counter: u32, env: &HashMap<String, Expr>, global_env: &HashMap<String, Expr>, args: &Vec<Expr>) -> Result<Expr, JumpBuffer> {
+fn eval_jump(jump: &JumpExpr, counter: u32, env: &HashMap<String, Expr>, global_env: &HashMap<String, Expr>, args: &[Expr]) -> Result<Expr, JumpBuffer> {
     let i = args.len();
     if i < jump.arguments.len() {
         eval(&jump.arguments[i], counter, env, global_env, Rc::new(|arg: &Expr, counter| {
-            let mut args = args.clone();
+            let mut args = args.to_owned();
             args.push(arg.clone());
             eval_jump(jump, counter, env, global_env, &args)
         }))
@@ -120,7 +120,7 @@ fn eval_jump(jump: &JumpExpr, counter: u32, env: &HashMap<String, Expr>, global_
             let Expr::Literal(reference) = reference else {
                 panic!("jump reference has not been reduced to a literal")
             };
-            return Err(JumpBuffer { target_id: reference.value, args: args.clone(), counter })
+            Err(JumpBuffer { target_id: reference.value, args: args.to_owned(), counter })
         }))
     }
 }
@@ -191,7 +191,7 @@ pub fn eval(expr: &Expr, counter: u32, env: &HashMap<String, Expr>, global_env: 
             }
         },
         Expr::Jump(jump) => {
-            eval_jump(jump, counter, env, global_env, &vec![])
+            eval_jump(jump, counter, env, global_env, &[])
         },
         Expr::Continuation(continuation) => {
             let continuation_id = counter;
@@ -248,7 +248,7 @@ pub fn expand<'a>(expr: &'a mut Expr, env: &HashMap<String, Expr>) -> &'a mut Ex
         },
         Expr::Meta(MetaExpr { reference: Some(reference), fragment }) => {
             let counter = 0;
-            let reference = eval(&reference, counter, &HashMap::new(), env, Rc::new(identity)).expect("jump must not escape macro expression");
+            let reference = eval(reference, counter, &HashMap::new(), env, Rc::new(identity)).expect("jump must not escape macro expression");
             let arguments = vec![Expr::Meta(MetaExpr { reference: None, fragment: fragment.clone() })];
             let expansion_expr = Expr::Invoke(InvokeExpr { reference: Box::new(reference), arguments: arguments.clone() });
             let expansion = eval(&expansion_expr, counter, &HashMap::new(), env, Rc::new(identity)).expect("jump must not escape macro");
