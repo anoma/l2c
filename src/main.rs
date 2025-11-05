@@ -1,14 +1,13 @@
-pub mod sexpr;
-pub mod expr;
-pub mod transpile;
 pub mod expand;
-use std::rc::Rc;
+pub mod expr;
+pub mod sexpr;
+pub mod transpile;
 use std::collections::HashMap;
+use std::rc::Rc;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
-    let source = std::fs::read_to_string(&args[1])
-        .expect("unable to read source");
+    let source = std::fs::read_to_string(&args[1]).expect("unable to read source");
     let mut program = expr::parse_program(&source).unwrap();
     println!("Source Program:");
     for expr in &program {
@@ -32,7 +31,18 @@ fn main() {
     println!();
     println!("Evaluated Program:");
     for (idx, expr) in program.iter_mut().enumerate() {
-        println!("Evaluation {}: {}", idx, expand::eval(expr, 0, &HashMap::new(), &global_env, Rc::new(expand::identity)).unwrap());
+        println!(
+            "Evaluation {}: {}",
+            idx,
+            expand::eval(
+                expr,
+                0,
+                &HashMap::new(),
+                &global_env,
+                Rc::new(expand::identity)
+            )
+            .unwrap()
+        );
     }
     println!();
     println!("Compiled Outputs:");

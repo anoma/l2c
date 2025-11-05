@@ -1,5 +1,5 @@
-use pest_derive::Parser;
 use pest::iterators::Pair;
+use pest_derive::Parser;
 #[derive(Parser)]
 #[grammar = "l2.pest"]
 pub struct L2Parser;
@@ -21,7 +21,11 @@ impl SExpr {
     }
 
     pub fn parse_list(pair: Pair<Rule>, prefix: Option<SExpr>) -> SExpr {
-        assert!(pair.as_rule() == Rule::list || pair.as_rule() == Rule::slist || pair.as_rule() == Rule::clist);
+        assert!(
+            pair.as_rule() == Rule::list
+                || pair.as_rule() == Rule::slist
+                || pair.as_rule() == Rule::clist
+        );
         let mut fragments: Vec<_> = prefix.into_iter().collect();
         for fragment in pair.into_inner() {
             assert_eq!(fragment.as_rule(), Rule::fragment);
@@ -33,16 +37,14 @@ impl SExpr {
     pub fn parse_fragment2(pair: Pair<Rule>) -> SExpr {
         assert_eq!(pair.as_rule(), Rule::fragment2);
         let mut pairs = pair.into_inner();
-        let pair = pairs
-            .next()
-            .expect("fragment2 should be non-empty");
+        let pair = pairs.next().expect("fragment2 should be non-empty");
         assert_eq!(pairs.next(), None);
         match pair.as_rule() {
             Rule::token => Self::parse_token(pair),
             Rule::list => Self::parse_list(pair, None),
             Rule::clist => Self::parse_list(pair, Some(Self::make_symbol("jump"))),
             Rule::slist => Self::parse_list(pair, Some(Self::make_symbol("invoke"))),
-            _ => unreachable!("fragment2 element should be a list or token")
+            _ => unreachable!("fragment2 element should be a list or token"),
         }
     }
 
@@ -84,10 +86,12 @@ impl std::fmt::Display for SExpr {
             [] => write!(f, "()")?,
             [Self::Char(_), ..] => {
                 for ch in lst {
-                    let Self::Char(ch) = ch else { panic!("must be character") };
+                    let Self::Char(ch) = ch else {
+                        panic!("must be character")
+                    };
                     write!(f, "{ch}")?;
                 }
-            },
+            }
             _ => {
                 let mut iter = lst.iter();
                 write!(f, "({}", iter.next().expect("list should be non-empty"))?;

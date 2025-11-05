@@ -1,5 +1,5 @@
+use crate::sexpr::{L2Parser, Rule, SExpr};
 use pest::Parser;
-use crate::sexpr::{SExpr, Rule, L2Parser};
 
 pub const LITERAL_LEN: usize = 32;
 
@@ -95,7 +95,7 @@ impl std::fmt::Display for Expr {
                     }
                 }
                 write!(f, ") {})", function.expression)
-            },
+            }
             Self::Continuation(continuation) => {
                 write!(f, "(continuation {} (", continuation.reference)?;
                 if let [param0, rest @ ..] = &continuation.parameters[..] {
@@ -105,29 +105,33 @@ impl std::fmt::Display for Expr {
                     }
                 }
                 write!(f, ") {})", continuation.expression)
-            },
+            }
             Self::Invoke(invoke) => {
                 write!(f, "[{}", invoke.reference)?;
                 for arg in &invoke.arguments {
                     write!(f, " {arg}")?;
                 }
                 write!(f, "]")
-            },
+            }
             Self::Jump(invoke) => {
                 write!(f, "{{{}", invoke.reference)?;
                 for arg in &invoke.arguments {
                     write!(f, " {arg}")?;
                 }
                 write!(f, "}}")
-            },
+            }
             Self::Storage(storage) => {
                 write!(f, "(storage {}", storage.reference)?;
                 for arg in &storage.arguments {
                     write!(f, " {arg}")?;
                 }
                 write!(f, ")")
-            },
-            Self::If(ife) => write!(f, "(if {} {} {})", ife.condition, ife.consequent, ife.alternate),
+            }
+            Self::If(ife) => write!(
+                f,
+                "(if {} {} {})",
+                ife.condition, ife.consequent, ife.alternate
+            ),
             Self::Meta(meta) => write!(f, "{}", meta.fragment),
         }
     }
@@ -176,85 +180,94 @@ pub fn parse_expr(sexpr: SExpr) -> Result<Expr, ParserError> {
     };
     Ok(match &sexpr[..] {
         [] => panic!("list must be non-empty"),
-        [SExpr::Char(_), ..] => {
-            Expr::Symbol(SymbolExpr {
-                reference: parse_string(SExpr::List(sexpr.clone()))?,
-            })
-        },
+        [SExpr::Char(_), ..] => Expr::Symbol(SymbolExpr {
+            reference: parse_string(SExpr::List(sexpr.clone()))?,
+        }),
         [keyword, value] if is_keyword(keyword, "literal") => {
             let string = parse_string(value.clone())?;
             if string.len() != LITERAL_LEN {
                 return Err(ParserError::UnexpectedLiteral(string));
             }
-            let value = u32::from_str_radix(&string, 2).map_err(|_| ParserError::UnexpectedLiteral(string))?;
-            Expr::Literal(LiteralExpr {
-                value,
-            })
-        },
-        [keyword, reference, expr] if is_keyword(keyword, "with") => {
-            Expr::With(WithExpr {
-                reference: parse_string(reference.clone())?,
-                expression: Box::new(parse_expr(expr.clone())?),
-                escapes: false,
-            })
-        },
+            let value = u32::from_str_radix(&string, 2)
+                .map_err(|_| ParserError::UnexpectedLiteral(string))?;
+            Expr::Literal(LiteralExpr { value })
+        }
+        [keyword, reference, expr] if is_keyword(keyword, "with") => Expr::With(WithExpr {
+            reference: parse_string(reference.clone())?,
+            expression: Box::new(parse_expr(expr.clone())?),
+            escapes: false,
+        }),
         [keyword, reference, parameters, expr] if is_keyword(keyword, "function") => {
             let SExpr::List(parameters) = parameters else {
                 return Err(ParserError::ExpectedList(parameters.clone()));
             };
             Expr::Function(FunctionExpr {
                 reference: parse_string(reference.clone())?,
-                parameters: parameters.iter().map(|x| parse_string(x.clone())).collect::<Result<_, _>>()?,
+                parameters: parameters
+                    .iter()
+                    .map(|x| parse_string(x.clone()))
+                    .collect::<Result<_, _>>()?,
                 expression: Box::new(parse_expr(expr.clone())?),
             })
-        },
+        }
         [keyword, reference, parameters, expr] if is_keyword(keyword, "continuation") => {
             let SExpr::List(parameters) = parameters else {
                 return Err(ParserError::ExpectedList(parameters.clone()));
             };
             Expr::Continuation(ContinuationExpr {
                 reference: parse_string(reference.clone())?,
-                parameters: parameters.iter().map(|x| parse_string(x.clone())).collect::<Result<_, _>>()?,
+                parameters: parameters
+                    .iter()
+                    .map(|x| parse_string(x.clone()))
+                    .collect::<Result<_, _>>()?,
                 expression: Box::new(parse_expr(expr.clone())?),
                 escapes: false,
             })
-        },
+        }
         [keyword, reference, arguments @ ..] if is_keyword(keyword, "invoke") => {
             Expr::Invoke(InvokeExpr {
                 reference: Box::new(parse_expr(reference.clone())?),
-                arguments: arguments.iter().map(|x| parse_expr(x.clone())).collect::<Result<_, _>>()?,
+                arguments: arguments
+                    .iter()
+                    .map(|x| parse_expr(x.clone()))
+                    .collect::<Result<_, _>>()?,
             })
-        },
+        }
         [keyword, reference, arguments @ ..] if is_keyword(keyword, "jump") => {
             Expr::Jump(JumpExpr {
                 reference: Box::new(parse_expr(reference.clone())?),
-                arguments: arguments.iter().map(|x| parse_expr(x.clone())).collect::<Result<_, _>>()?,
+                arguments: arguments
+                    .iter()
+                    .map(|x| parse_expr(x.clone()))
+                    .collect::<Result<_, _>>()?,
             })
-        },
+        }
         [keyword, reference, arguments @ ..] if is_keyword(keyword, "storage") => {
             Expr::Storage(StorageExpr {
                 reference: parse_string(reference.clone())?,
-                arguments: arguments.iter().map(|x| parse_expr(x.clone())).collect::<Result<_, _>>()?,
+                arguments: arguments
+                    .iter()
+                    .map(|x| parse_expr(x.clone()))
+                    .collect::<Result<_, _>>()?,
             })
-        },
+        }
         [keyword, condition, consequent, alternate] if is_keyword(keyword, "if") => {
             Expr::If(IfExpr {
                 condition: Box::new(parse_expr(condition.clone())?),
                 consequent: Box::new(parse_expr(consequent.clone())?),
                 alternate: Box::new(parse_expr(alternate.clone())?),
             })
-        },
-        [keyword, ..] => {
-            Expr::Meta(MetaExpr {
-                reference: Some(Box::new(parse_expr(keyword.clone())?)),
-                fragment: SExpr::List(sexpr),
-            })
-        },
+        }
+        [keyword, ..] => Expr::Meta(MetaExpr {
+            reference: Some(Box::new(parse_expr(keyword.clone())?)),
+            fragment: SExpr::List(sexpr),
+        }),
     })
 }
 
 pub fn parse_program(source: &str) -> Result<Vec<Expr>, ParserError> {
-    let program = L2Parser::parse(Rule::program, source).map_err(|x| ParserError::SExprError(Box::new(x)))?;
+    let program =
+        L2Parser::parse(Rule::program, source).map_err(|x| ParserError::SExprError(Box::new(x)))?;
     let mut fragments = vec![];
     for fragment in program {
         match fragment.as_rule() {
