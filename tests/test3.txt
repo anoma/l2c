@@ -4,7 +4,7 @@
 (function cddr (l) [cdr [cdr l]])
 (function cdddr (l) [cdr [cddr l]])
 (function cdar (l) [cdr [car l]])
-(function cadar (l) [car [@cdar l]])
+(function cadar (l) [car [cdar l]])
 (function caddar (l) [car [cdr [cdar l]]])
 (function caddr (l) [car [cdr [cdr l]]])
 (function cadddr (l) [car [cdr [cdr [cdr l]]]])
